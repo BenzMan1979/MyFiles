@@ -90,7 +90,7 @@ async function hmac(key: Bytes, msg: Bytes): Promise<Bytes> {
 }
 
 /** Must match openProofMessage() in the client core. */
-const openProofMessage = (vaultId: string, nonce: string): Bytes => enc.encode(`vault-viewer/v1/open:${vaultId}:${nonce}`);
+const openProofMessage = (vaultId: string, nonce: string) => enc.encode(`vault-viewer/v1/open:${vaultId}:${nonce}`) as Bytes;
 
 const CORS = {
   'access-control-allow-origin': '*',

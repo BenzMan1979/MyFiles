@@ -1,0 +1,72 @@
+name: Deploy GitHub Pages
+
+# One Pages site for the whole repo:
+#   /               3D xiangqi
+#   /vault-viewer/  隨身密閱 packer (index.html) and hosted viewer (open.html)
+
+on:
+  push:
+    branches: [claude/festive-lamport-mc1w7w, claude/relaxed-darwin-410g5m, main]
+    paths:
+      - 'xiangqi-3d/**'
+      - 'vault-viewer/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            xiangqi-3d/package-lock.json
+            vault-viewer/package-lock.json
+
+      - name: Build 3D xiangqi
+        working-directory: xiangqi-3d
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Build vault viewer
+        working-directory: vault-viewer
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp -r xiangqi-3d/dist/. site/
+          mkdir -p site/vault-viewer
+          cp -r vault-viewer/dist/. site/vault-viewer/
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

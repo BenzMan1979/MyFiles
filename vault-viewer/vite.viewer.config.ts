@@ -12,6 +12,7 @@ export default defineConfig({
     assetsInlineLimit: 100_000_000,
     cssCodeSplit: false,
     modulePreload: false,
+    chunkSizeWarningLimit: 5000,
     rollupOptions: {
       output: { inlineDynamicImports: true, entryFileNames: 'viewer.js', assetFileNames: 'viewer[extname]' },
     },
