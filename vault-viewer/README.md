@@ -65,8 +65,7 @@ tests/        單元測試；tests/e2e/ 為瀏覽器端對端測試
 
 ## 部署
 
-- GitHub Pages：**尚未啟用**。象棋的開發分支也在部署 Pages，而 Pages 每次會替換整個網站，兩邊同時部署會互相覆蓋。
-  合併到 main 時，用 `docs/deploy-pages.example.yml` 取代 `.github/workflows/deploy-xiangqi.yml`（象棋在根目錄、隨身密閱在 `/vault-viewer/`）。
-  在那之前，可以先用 `npm run build` 產生的 `dist/index.html`（打包器）直接雙擊使用。
+- GitHub Pages：**尚未啟用**。要啟用時，把 `docs/deploy-pages.example.yml` 複製成 `.github/workflows/deploy-pages.yml`，
+  並到 repo 設定 → Pages，把來源選成「GitHub Actions」。在那之前，可以先用 `npm run build` 產生的 `dist/index.html`（打包器）直接雙擊使用。
 - 伺服器：`.github/workflows/deploy-vault-server.yml`，需要 repo Secrets `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`
   （選填 `VAULT_ADMIN_PASSWORD`）；沒有設定就自動略過
