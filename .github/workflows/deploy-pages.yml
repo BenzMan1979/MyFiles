@@ -4,7 +4,7 @@ name: Deploy GitHub Pages
 
 on:
   push:
-    branches: [claude/relaxed-darwin-410g5m, main]
+    branches: [main]
     paths:
       - 'vault-viewer/**'
       - '.github/workflows/deploy-pages.yml'

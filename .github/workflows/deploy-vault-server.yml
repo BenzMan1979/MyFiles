@@ -7,7 +7,7 @@ name: Deploy vault server to Cloudflare
 
 on:
   push:
-    branches: [claude/relaxed-darwin-410g5m, main]
+    branches: [main]
     paths:
       - 'vault-viewer/server/**'
       - '.github/workflows/deploy-vault-server.yml'
