@@ -22,6 +22,9 @@
 | D9 | 金鑰形式 | 同一把金鑰可輸出成 `.key` 檔、分組文字、QR Code | 收件人用任一種都能解鎖 |
 | D10 | 打包／管理 | 一個網頁同時負責打包與管理（GitHub Pages，也可下載到本機使用），用管理員密碼登入 | 加密都在本機完成，只有伺服器那份金鑰和使用條件會上傳，文件本身不上傳 |
 | D11 | 防護 | P0 全部都做，每份封存檔可個別開關與調整參數 | 浮水印、禁止複製／列印／下載、閒置上鎖、密碼錯誤鎖定 |
+| D12 | 介面原則 | 打包器以「步驟精靈」設計，讓不懂技術的人也能照著操作；**使用者完全不需要打指令** | 使用者要求 |
+| D13 | 伺服器設定 | 打包器內建「伺服器設定精靈」：圖文教學（註冊 Cloudflare → 按「一鍵部署到 Cloudflare」→ 在部署表單輸入管理員密碼 → 貼上伺服器網址 → 測試連線）。可以有多組伺服器設定，並可編輯、切換、刪除與更換管理員密碼 | Cloudflare 的 Deploy 按鈕全程在網頁上完成，支援 Durable Objects，部署時可要求輸入 secret。Cloudflare API 不能直接從瀏覽器呼叫，所以不讓打包器自己部署 |
+| D14 | 本 repo 的伺服器 | 擁有者這一套用 GitHub Actions＋API Token 自動部署 | 推送程式後自動更新，方便開發與測試；其他使用者走 D13 的一鍵部署 |
 
 ## 3. 已知限制（要讓使用者知道）
 
@@ -93,11 +96,18 @@
 - **P1**：Word／Excel 預覽、PDF 轉逐頁圖片、手機檢視頁、管理頁的統計圖表
 - **P2**：視需求加入大檔外存（R2）、裝置綁定、通知（有人開啟時推播）
 
-## 6. 開始前需要使用者準備
+## 6. 伺服器準備
 
+**一般使用者（D13，不用打指令）**：在打包器的「伺服器設定精靈」照步驟走，用一鍵部署按鈕建立自己的伺服器。
+部署表單會要求設定管理員密碼；之後也能在打包器裡更換。
+
+**本 repo 擁有者（D14）**：
 1. 註冊 Cloudflare 免費帳號
-2. 建立 API Token（權限：Workers Scripts 編輯、Durable Objects），並把 Token 和 Account ID 存到 GitHub repo 的 Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`
-3. 設定管理員密碼（之後我會提供設定指令，密碼不寫進程式碼）
+2. 建立自訂 API Token：
+   - 權限：帳戶 → Workers 指令碼（Workers Scripts）→ 編輯；帳戶 → 帳戶設定（Account Settings）→ 讀取
+   - 帳戶資源：包含 → 選自己的帳戶
+   - 到期：1 年；IP 過濾：留空
+3. 把 Token 和 Account ID 存到 GitHub repo 的 Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`
 
 在帳號準備好之前，可以先用 `wrangler dev` 在本機模擬伺服器，開發不受影響。
 
