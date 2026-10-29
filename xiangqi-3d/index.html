@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>楚河漢界：名將對弈</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700;900&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <header id="title">
+      <h1>楚河漢界</h1>
+      <p>名將對弈 · 單機雙人</p>
+    </header>
+
+    <div id="turn" data-side="red" role="status" aria-live="polite">
+      <span class="dot"></span><span class="label">紅方走棋</span><span class="check-tag">將軍中</span>
+    </div>
+
+    <aside id="moves-panel">
+      <h2>棋譜</h2>
+      <ol id="moves"></ol>
+    </aside>
+
+    <nav id="toolbar">
+      <button id="btn-new">新局</button>
+      <button id="btn-undo" disabled>悔棋</button>
+      <button id="btn-flip">翻轉視角</button>
+      <button id="btn-view">俯視</button>
+      <button id="btn-autoflip" aria-pressed="false" title="每步後自動轉到走棋方的視角">自動翻轉</button>
+      <button id="btn-moves" class="mobile-only">棋譜</button>
+      <button id="btn-resign" class="danger">認輸</button>
+    </nav>
+
+    <div id="banner"></div>
+
+    <dialog id="result">
+      <h2 id="result-title">紅方勝</h2>
+      <p id="result-reason">將死</p>
+      <div class="actions">
+        <button id="btn-again" class="primary">再來一局</button>
+        <button id="btn-review">檢視棋局</button>
+      </div>
+    </dialog>
+
+    <div id="loading">載入中…</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
