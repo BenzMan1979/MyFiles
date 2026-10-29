@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { randomBytes, utf8, fromUtf8 } from '../src/core/bytes';
 import { keyToText, textToKey, generatePassword } from '../src/core/keytext';
 import {
-  buildVault, renderVaultHtml, readPayloadFromHtml, decodeBlob, prepareUnlock, openManifest, readFile,
+  buildVault, renderVaultHtml, readPayloadFromHtml, ChunkReader, prepareUnlock, openManifest, readFile,
   deriveContentKey, DEFAULT_POLICY, DEFAULT_PROTECTION, PAYLOAD_MARKER, type InputFile, type BuildOptions,
 } from '../src/core/format';
 import { fromB64 } from '../src/core/bytes';
@@ -60,11 +60,14 @@ describe('vault format', () => {
     const { p, key, manifest } = await unlock(html, 'pw-1234', o.keyfile, null);
     expect(manifest.recipient).toBe('小明');
     expect(manifest.files.map((f) => f.path)).toEqual(['a/說明.txt', 'b/big.bin']);
-    const blob = decodeBlob(p);
+    const blob = new ChunkReader(p);
     expect(fromUtf8(await readFile(p.header, blob, manifest.files[0], key))).toBe('你好');
     const back = await readFile(p.header, blob, manifest.files[1], key);
     expect(back.length).toBe(big.length);
     expect(back[big.length - 1]).toBe(big[big.length - 1]);
+    expect(back[3 * 1024 * 1024 - 7]).toBe(big[3 * 1024 * 1024 - 7]);
+    const truncated = { ...p, chunks: p.chunks.slice(0, -1) };
+    expect(() => new ChunkReader(truncated)).toThrow();
   });
 
   it('rejects a wrong password or key file', async () => {

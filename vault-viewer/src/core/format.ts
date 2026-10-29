@@ -15,7 +15,7 @@ export const FORMAT_VERSION = 1;
 export const PAYLOAD_MARKER = '<!--VAULT-PAYLOAD-->';
 export const TITLE_MARKER = '__VAULT_TITLE__';
 /** Raw bytes per embedded chunk (multiple of 3 so chunks base64-encode without padding). */
-const CHUNK_BYTES = 3 * 1024 * 1024;
+export const CHUNK_BYTES = 3 * 1024 * 1024;
 
 export type VaultMode = 'online' | 'offline';
 
@@ -254,21 +254,47 @@ export function readPayloadFromHtml(html: string): Payload {
   return { header: checkHeader(JSON.parse(hm[1])), chunks };
 }
 
-export function decodeBlob(p: Payload): Uint8Array {
-  const out = new Uint8Array(p.header.blobSize);
-  let o = 0;
-  for (const c of p.chunks) {
-    const b = fromB64(c);
-    out.set(b, o);
-    o += b.length;
-  }
-  if (o !== p.header.blobSize) throw new Error('封存檔內容不完整（檔案可能損毀或被截斷）');
-  return out;
-}
+/**
+ * Random access into the embedded blob. Only the chunks covering a file are decoded, so opening
+ * one document in a 300 MB vault does not decode all 300 MB.
+ */
+export class ChunkReader {
+  private cache = new Map<number, Uint8Array>();
 
-export interface UnlockSecrets {
-  pwKey: Uint8Array;
-  keyfile: Uint8Array;
+  constructor(private p: Payload) {
+    const expected = Math.ceil(p.header.blobSize / CHUNK_BYTES);
+    if (p.chunks.length !== expected) throw new Error('封存檔內容不完整（檔案可能損毀或被截斷）');
+  }
+
+  private chunk(i: number): Uint8Array {
+    let c = this.cache.get(i);
+    if (!c) {
+      c = fromB64(this.p.chunks[i]);
+      if (this.cache.size >= 4) this.cache.delete(this.cache.keys().next().value!);
+      this.cache.set(i, c);
+    }
+    return c;
+  }
+
+  read(offset: number, length: number): Uint8Array {
+    if (offset + length > this.p.header.blobSize) throw new Error('封存檔內容不完整（檔案可能損毀或被截斷）');
+    const out = new Uint8Array(length);
+    let done = 0;
+    while (done < length) {
+      const pos = offset + done;
+      const i = Math.floor(pos / CHUNK_BYTES);
+      const c = this.chunk(i);
+      const from = pos - i * CHUNK_BYTES;
+      const take = Math.min(c.length - from, length - done);
+      out.set(c.subarray(from, from + take), done);
+      done += take;
+    }
+    return out;
+  }
+
+  clear() {
+    this.cache.clear();
+  }
 }
 
 export async function prepareUnlock(header: VaultHeader, password: string, keyfile: Uint8Array) {
@@ -285,13 +311,8 @@ export async function openManifest(header: VaultHeader, contentKey: CryptoKey): 
   return JSON.parse(fromUtf8(pt)) as Manifest;
 }
 
-export function readFile(header: VaultHeader, blob: Uint8Array, entry: FileEntry, contentKey: CryptoKey): Promise<Uint8Array> {
-  return aesDecrypt(
-    contentKey,
-    fromB64(entry.iv),
-    blob.subarray(entry.offset, entry.offset + entry.length),
-    fileAad(header.id, entry.id),
-  );
+export function readFile(header: VaultHeader, blob: ChunkReader, entry: FileEntry, contentKey: CryptoKey): Promise<Uint8Array> {
+  return aesDecrypt(contentKey, fromB64(entry.iv), blob.read(entry.offset, entry.length), fileAad(header.id, entry.id));
 }
 
 export { deriveContentKey };

@@ -57,9 +57,10 @@ const ADMIN_LOCK_MS = 15 * 60 * 1000;
 const PBKDF2_ITERATIONS = 5000;
 
 const enc = new TextEncoder();
+type Bytes = Uint8Array<ArrayBuffer>;
 
 const b64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
-const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const unb64 = (s: string): Bytes => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
 function randomToken(bytes = 24): string {
   const b = new Uint8Array(bytes);
@@ -74,22 +75,22 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   return d === 0;
 }
 
-async function sha256(s: string): Promise<Uint8Array> {
+async function sha256(s: string): Promise<Bytes> {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(s)));
 }
 
-async function pbkdf2(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
+async function pbkdf2(password: string, salt: Bytes, iterations: number): Promise<Bytes> {
   const k = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
   return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, k, 256));
 }
 
-async function hmac(key: Uint8Array, msg: Uint8Array): Promise<Uint8Array> {
+async function hmac(key: Bytes, msg: Bytes): Promise<Bytes> {
   const k = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return new Uint8Array(await crypto.subtle.sign('HMAC', k, msg));
 }
 
 /** Must match openProofMessage() in the client core. */
-const openProofMessage = (vaultId: string, nonce: string) => enc.encode(`vault-viewer/v1/open:${vaultId}:${nonce}`);
+const openProofMessage = (vaultId: string, nonce: string): Bytes => enc.encode(`vault-viewer/v1/open:${vaultId}:${nonce}`);
 
 const CORS = {
   'access-control-allow-origin': '*',
