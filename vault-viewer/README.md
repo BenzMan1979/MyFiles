@@ -3,7 +3,7 @@
 免安裝的加密文件檢視器。把一批文件加密成**一個 `.vault.html` 檔**，收件人雙擊就能用瀏覽器開啟，
 輸入**密碼＋金鑰**後，左邊是檔案列表、右邊是內容。可以限制期限、次數，加上浮水印，並隨時遠端收回。
 
-- **打包器（給發送者）**：https://benzman1979.github.io/MyFiles/vault-viewer/
+- **打包器（給發送者）**：https://benzman1979.github.io/MyFiles/vault-viewer/ （待 Pages 部署啟用，見下方「部署」）
 - **手機檢視頁（給收件人）**：https://benzman1979.github.io/MyFiles/vault-viewer/open.html
 
 企劃與決策紀錄：[docs/PROPOSAL.md](docs/PROPOSAL.md)
@@ -65,6 +65,8 @@ tests/        單元測試；tests/e2e/ 為瀏覽器端對端測試
 
 ## 部署
 
-- GitHub Pages：`.github/workflows/deploy-pages.yml` 會把象棋放在網站根目錄、隨身密閱放在 `/vault-viewer/`
+- GitHub Pages：**尚未啟用**。象棋的開發分支也在部署 Pages，而 Pages 每次會替換整個網站，兩邊同時部署會互相覆蓋。
+  合併到 main 時，用 `docs/deploy-pages.example.yml` 取代 `.github/workflows/deploy-xiangqi.yml`（象棋在根目錄、隨身密閱在 `/vault-viewer/`）。
+  在那之前，可以先用 `npm run build` 產生的 `dist/index.html`（打包器）直接雙擊使用。
 - 伺服器：`.github/workflows/deploy-vault-server.yml`，需要 repo Secrets `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`
   （選填 `VAULT_ADMIN_PASSWORD`）；沒有設定就自動略過
