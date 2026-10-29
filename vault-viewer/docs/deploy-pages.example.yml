@@ -1,3 +1,6 @@
+# 範本：合併到 main 後，用這個取代 deploy-xiangqi.yml，讓象棋與隨身密閱共用同一個 Pages 網站。
+# 目前不啟用，因為象棋的開發分支也在部署 Pages，兩個工作流程會互相覆蓋整個網站。
+
 name: Deploy GitHub Pages
 
 # One Pages site for the whole repo:
