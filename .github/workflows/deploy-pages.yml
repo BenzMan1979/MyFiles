@@ -1,6 +1,3 @@
-# 範本：要用 GitHub Pages 代管隨身密閱時，複製成 .github/workflows/deploy-pages.yml 即可啟用。
-# 目前不啟用；啟用前記得到 repo 設定 → Pages，把來源選成「GitHub Actions」。
-
 name: Deploy GitHub Pages
 
 # One Pages site: 隨身密閱 packer (index.html) and hosted viewer (open.html) at the site root.
