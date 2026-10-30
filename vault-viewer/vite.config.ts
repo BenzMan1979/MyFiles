@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 // can be saved and used offline.
 export default defineConfig({
   base: './',
+  assetsInclude: ['**/*.bcmap'], // pdf.js character maps, embedded as data (see src/shared/pdfjs.ts)
   build: {
     outDir: 'dist',
     emptyOutDir: true,

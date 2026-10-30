@@ -31,6 +31,40 @@ export function minimalPdf(pages = 1): Uint8Array {
   return utf8(out);
 }
 
+/**
+ * Chinese text the old way: a font that is NOT embedded, referring to a predefined character map
+ * (UniCNS-UCS2-H for Traditional Chinese, UniGB-UCS2-H for Simplified). The reader has to supply the map.
+ */
+export function cjkPdf(): Uint8Array {
+  const hex = (t: string) => Array.from(t, (ch) => ch.charCodeAt(0).toString(16).padStart(4, '0')).join('').toUpperCase();
+  const stream = `BT /F1 28 Tf 30 130 Td <${hex('中文測試報價單')}> Tj ET\nBT /F2 28 Tf 30 70 Td <${hex('简体中文文档')}> Tj ET`;
+  const font = (n: number, base: string, enc: string, order: string) =>
+    `<< /Type /Font /Subtype /Type0 /BaseFont /${base} /Encoding /${enc} /DescendantFonts [${n} 0 R] >>`;
+  const cid = (base: string, order: string) =>
+    `<< /Type /Font /Subtype /CIDFontType0 /BaseFont /${base} /CIDSystemInfo << /Registry (Adobe) /Ordering (${order}) /Supplement 0 >> /DW 1000 >>`;
+  const objs = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>',
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    font(7, 'MSung-Light', 'UniCNS-UCS2-H', 'CNS1'),
+    font(8, 'STSong-Light', 'UniGB-UCS2-H', 'GB1'),
+    cid('MSung-Light', 'CNS1'),
+    cid('STSong-Light', 'GB1'),
+  ];
+  let out = '%PDF-1.4\n';
+  const offsets: number[] = [];
+  objs.forEach((o, i) => {
+    offsets.push(out.length);
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+  for (const o of offsets) out += `${String(o).padStart(10, '0')} 00000 n \n`;
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return utf8(out);
+}
+
 // 2x2 red PNG
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
 

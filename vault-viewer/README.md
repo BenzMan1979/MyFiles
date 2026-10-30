@@ -51,6 +51,21 @@
 用方法二（連結 Git）或方法三（Actions）部署後，之後只要更新 GitHub，Cloudflare 就會自動重新部署，不用手動更新；封存檔的資料存在 Cloudflare 上，重新部署不會被清掉。
 想把「開發」和「正式」分開：在 Cloudflare 的專案設定把**生產分支**改成 `release`，開發時推 `main`（看 Pages 預覽），確定沒問題再把 `main` 合併到 `release`，Cloudflare 才會更新。
 
+### 用 Cloudflare Access 保護打包器（選用）
+
+打包器網頁本身沒有機密，管理 API 也有管理員密碼與錯誤鎖定，不加 Access 也安全。想再多一層「只有自己人進得去打包器」，可以用 Cloudflare Access，
+但**要小心：不能整個網站一起鎖**。收件人開啟線上封存檔時，是在他們的瀏覽器裡直接呼叫這個網址的 `/api/open`；整站都被 Access 擋住，他們就**打不開**（離線封存檔不受影響，因為不連線）。
+
+需要用自己的網域（Access 才能分路徑設定），建兩個 Access 應用程式：
+
+| 路徑 | 設定 |
+|---|---|
+| `/`（含 `/index.html`）、`/api/admin/*` | **要登入**（只允許你自己或同事的 Email） |
+| `/open.html`、`/api/open*` | **Bypass（不驗證）**，讓收件人和手機檢視頁可以使用 |
+
+`/api/info` 只是連線檢查，保護或不保護都可以。更簡單的替代：不加 Access，改用參數 `ADMIN_ORIGINS` 限制只有你的網址能從瀏覽器呼叫管理 API。
+Workers 設定裡「用 Cloudflare Access 保護 workers.dev」的開關是整個 Worker 一起鎖，無法排除路徑，所以**有線上封存檔要給別人開時不要用那個開關**。
+
 ### 方法四：自己的電腦
 
 ```bash

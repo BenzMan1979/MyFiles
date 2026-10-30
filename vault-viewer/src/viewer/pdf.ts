@@ -1,7 +1,7 @@
 // PDF pages drawn with pdf.js, loaded as the person scrolls.
 
 import { h } from '../shared/dom';
-import { loadPdfjs } from '../shared/pdfjs';
+import { closeDocument, documentDefaults, loadPdfjs, whenClosed } from '../shared/pdfjs';
 
 export interface PdfOptions {
   /** add a transparent text layer so the text can be selected and searched (only when copying is allowed) */
@@ -10,7 +10,8 @@ export interface PdfOptions {
 
 export async function renderPdf(container: HTMLElement, data: Uint8Array, opts: PdfOptions = {}): Promise<() => void> {
   const pdfjs = loadPdfjs();
-  const task = pdfjs.getDocument({ data, enableXfa: false });
+  await whenClosed();
+  const task = pdfjs.getDocument({ data, enableXfa: false, ...documentDefaults });
   const doc = await task.promise;
   let zoom = 1;
   let disposed = false;
@@ -94,6 +95,6 @@ export async function renderPdf(container: HTMLElement, data: Uint8Array, opts: 
     disposed = true;
     io.disconnect();
     ro.disconnect();
-    void task.destroy();
+    void closeDocument(task);
   };
 }

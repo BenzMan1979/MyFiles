@@ -6,7 +6,7 @@ import type { Browser, Page } from 'playwright';
 import { randomBytes, toB64 } from '../../src/core/bytes';
 import { keyToText } from '../../src/core/keytext';
 import { buildVault, renderVaultHtml, DEFAULT_POLICY, DEFAULT_PROTECTION, type BuildOptions } from '../../src/core/format';
-import { officeFiles, sampleFiles, startHub } from './fixtures';
+import { cjkPdf, minimalPdf, officeFiles, sampleFiles, startHub } from './fixtures';
 
 const { chromium } = createRequire(import.meta.url)('playwright') as typeof import('playwright');
 const OUT = process.env.E2E_OUT ?? join(process.cwd(), 'test-results');
@@ -163,6 +163,60 @@ describe('Word and Excel previews', () => {
     await page.click('.file:has-text("舊檔.xls")');
     await page.waitForSelector('text=舊版 Office 格式');
     expect((page as Page & { errors: string[] }).errors).toEqual([]);
+    await page.close();
+  });
+});
+
+describe('Chinese PDFs whose fonts are not embedded', () => {
+  it('draws Traditional and Simplified Chinese through the built-in character maps', async () => {
+    const pdf = cjkPdf();
+    const { path, key } = await makeVault('cjk', { protection: { ...DEFAULT_PROTECTION, allowCopy: true } }, [
+      { path: '舊式中文.pdf', mime: 'application/pdf', size: pdf.length, read: async () => pdf },
+    ]);
+    const page = await openPage(path);
+    await unlock(page, 'abcd-efgh-jkmn', key);
+    await page.waitForSelector('.tree');
+    await page.waitForSelector('.pdf-page canvas', { timeout: 30_000 });
+    await page.waitForSelector('.textLayer span');
+    await page.screenshot({ path: join(OUT, 'cjk-pdf.png') });
+    // the text layer holds the real characters (the map turned the codes back into Unicode)
+    const text = await page.locator('.textLayer').innerText();
+    expect(text).toContain('中文測試報價單');
+    expect(text).toContain('简体中文文档');
+    // and the glyphs are really painted: dark pixels in both lines
+    const ink = await page.locator('.pdf-page canvas').evaluate((c) => {
+      const cv = c as HTMLCanvasElement;
+      const d = cv.getContext('2d')!.getImageData(0, 0, cv.width, cv.height).data;
+      const rows = [0, 0];
+      for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) if (d[(y * cv.width + x) * 4] < 100) rows[y < cv.height / 2 ? 0 : 1]++;
+      return rows;
+    });
+    expect(ink[0]).toBeGreaterThan(300);
+    expect(ink[1]).toBeGreaterThan(300);
+    await page.close();
+  });
+});
+
+describe('switching between PDFs', () => {
+  it('survives clicking back and forth quickly (documents share one worker)', async () => {
+    const a = minimalPdf(2);
+    const b = cjkPdf();
+    const { path, key } = await makeVault('pdf-switch', {}, [
+      { path: 'a.pdf', mime: 'application/pdf', size: a.length, read: async () => a },
+      { path: 'b.pdf', mime: 'application/pdf', size: b.length, read: async () => b },
+    ]);
+    const page = await openPage(path);
+    const problems: string[] = [];
+    page.on('console', (m) => { if (/being destroyed|Cannot read|TypeError/.test(m.text())) problems.push(m.text()); });
+    await unlock(page, 'abcd-efgh-jkmn', key);
+    await page.waitForSelector('.tree');
+    for (let i = 0; i < 24; i++) await page.click(`.file:has-text("${i % 2 ? 'b' : 'a'}.pdf")`, { delay: 0 });
+    await page.click('.file:has-text("a.pdf")');
+    await page.waitForSelector('.pdf-page canvas', { timeout: 20_000 });
+    expect(await page.locator('.preview .error').count()).toBe(0);
+    await page.click('.file:has-text("b.pdf")');
+    await page.waitForSelector('.pdf-page canvas', { timeout: 20_000 });
+    expect(problems).toEqual([]);
     await page.close();
   });
 });

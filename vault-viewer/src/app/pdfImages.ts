@@ -1,7 +1,7 @@
 // Turns a PDF into one JPEG per page, so that no text exists in the vault to copy or search.
 // Used for slides (PowerPoint exported to PDF) and anything else where that matters more than size.
 
-import { loadPdfjs } from '../shared/pdfjs';
+import { closeDocument, documentDefaults, loadPdfjs, whenClosed } from '../shared/pdfjs';
 
 export interface ImageOptions {
   /** pixels across the page's width */
@@ -14,13 +14,15 @@ const MAX_SIDE = 4000; // keeps one page well inside what a browser canvas can h
 
 export async function pdfToImages(data: Uint8Array, o: ImageOptions, onPage?: (done: number, total: number) => void): Promise<Uint8Array[]> {
   const pdfjs = loadPdfjs();
+  await whenClosed();
   // pdf.js hands the buffer to its worker, which would leave the caller's copy empty
-  const task = pdfjs.getDocument({ data: data.slice(), enableXfa: false });
+  const task = pdfjs.getDocument({ data: data.slice(), enableXfa: false, ...documentDefaults });
   let doc;
   try {
     doc = await task.promise;
   } catch (e) {
-    throw new Error((e as Error).name === 'PasswordException' ? '這個 PDF 有設定開啟密碼，請先移除密碼再加入' : '這不是有效的 PDF 檔');
+    await closeDocument(task);
+    throw new Error((e as Error).name === 'PasswordException' ? '這個 PDF 有設定開啟密碼，請先移除密碼再加入' : `這不是有效的 PDF 檔（${(e as Error).message}）`);
   }
   const pages: Uint8Array[] = [];
   try {
@@ -41,7 +43,7 @@ export async function pdfToImages(data: Uint8Array, o: ImageOptions, onPage?: (d
       onPage?.(n, doc.numPages);
     }
   } finally {
-    void task.destroy();
+    await closeDocument(task);
   }
   return pages;
 }

@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Browser } from 'playwright';
-import { minimalPdf } from './fixtures';
+import { cjkPdf, minimalPdf } from './fixtures';
 
 const { chromium } = createRequire(import.meta.url)('playwright') as typeof import('playwright');
 const OUT = join(process.env.E2E_OUT ?? join(process.cwd(), 'test-results'), 'images');
@@ -25,6 +25,7 @@ describe('PDF converted to page images', () => {
     await p.goto(`file://${join(process.cwd(), 'dist/index.html')}#create`);
     await p.setInputFiles('input[type=file][multiple]:not([webkitdirectory])', [
       { name: '簡報.pdf', mimeType: 'application/pdf', buffer: Buffer.from(minimalPdf(3)) },
+      { name: '舊式.pdf', mimeType: 'application/pdf', buffer: Buffer.from(cjkPdf()) }, // fonts not embedded
       { name: '備註.txt', mimeType: 'text/plain', buffer: Buffer.from('plain text file') },
     ]);
     await p.waitForSelector('.pdf-images');
@@ -57,8 +58,8 @@ describe('PDF converted to page images', () => {
     await v.waitForSelector('.tree');
     // one document, no per-page files
     expect(await v.locator('.tree .file').allTextContents()).toEqual(expect.arrayContaining([expect.stringContaining('簡報.pdf'), expect.stringContaining('備註.txt')]));
-    expect(await v.locator('.tree .file').count()).toBe(2);
-    expect(await v.locator('.side-foot').textContent()).toContain('2 個檔案');
+    expect(await v.locator('.tree .file').count()).toBe(3);
+    expect(await v.locator('.side-foot').textContent()).toContain('3 個檔案');
 
     await v.click('.file:has-text("簡報.pdf")');
     await v.waitForSelector('.page-images .page-image img', { timeout: 20_000 });
@@ -84,6 +85,21 @@ describe('PDF converted to page images', () => {
       return n;
     });
     expect(darkPixels).toBeGreaterThan(300);
+    // an older Chinese PDF (font not embedded) becomes pictures with its characters drawn too
+    await v.click('.file:has-text("舊式.pdf")');
+    await v.waitForSelector('.page-image img');
+    const cjkInk = await v.locator('.page-image img').first().evaluate((img) => {
+      const i = img as HTMLImageElement;
+      const c = document.createElement('canvas');
+      c.width = i.naturalWidth; c.height = i.naturalHeight;
+      const g = c.getContext('2d')!;
+      g.drawImage(i, 0, 0);
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let k = 0; k < d.length; k += 4) if (d[k] < 80) n++;
+      return n;
+    });
+    expect(cjkInk).toBeGreaterThan(1500);
     await v.click('.file:has-text("備註.txt")');
     await v.waitForSelector('pre.code:has-text("plain text file")');
     await ctx.close();

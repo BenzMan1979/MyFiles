@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 // single HTML template that the packer fills with the encrypted payload.
 export default defineConfig({
   root: 'src/viewer',
+  assetsInclude: ['**/*.bcmap'], // pdf.js character maps, embedded as data (see src/shared/pdfjs.ts)
   base: './',
   build: {
     outDir: '../../dist-viewer',
