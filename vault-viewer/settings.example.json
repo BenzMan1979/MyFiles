@@ -12,6 +12,7 @@
     "limits": {
       "maxRecipients": 500,
       "maxTotalMB": 300,
+      "phoneMB": 100,
       "minPasswordLength": 6
     },
     "defaults": {

@@ -231,6 +231,9 @@ function stepFiles(body: HTMLElement, rerender: () => void) {
         h('div', { class: 'size-bar' }, h('div', { class: `size-fill ${total > SIZE_LIMIT ? 'over' : ''}`, style: `width:${pct}%` })),
         h('span', { class: 'muted small' }, `${formatSize(total)} ／ 建議上限 ${formatSize(SIZE_LIMIT)}`),
       ),
+      total > settings.limits.phoneMB * 1024 * 1024 && total <= SIZE_LIMIT
+        ? h('p', { class: 'note' }, `超過 ${settings.limits.phoneMB}MB 的封存檔，電腦開得起來，但手機（特別是 iPhone）可能因為記憶體不足而打不開。收件人用手機的話，建議分成較小的幾份。`)
+        : null,
       total > SIZE_LIMIT ? h('p', { class: 'note warn' }, `總大小超過 ${settings.limits.maxTotalMB}MB，收件人開啟時可能很慢或開不起來。建議先壓縮影片，或分成幾份封存。`) : null,
       h('div', { class: 'file-table' },
         ...sorted.map((f) => {

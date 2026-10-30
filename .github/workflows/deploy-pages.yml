@@ -1,0 +1,58 @@
+name: Deploy preview to GitHub Pages
+
+# A quick preview of the packer and phone viewer while developing: push to main, about a minute
+# later the pages are live. Pages is static, so there is no server here: offline vaults work fully,
+# and online vaults use a server you have deployed to Cloudflare (paste its address in the packer).
+# The real deployment is Cloudflare (see deploy-cloudflare.yml, or connect the repo in Cloudflare).
+# Settings come from the same VAULT_SETTINGS variable and the links follow whichever repo builds.
+# Needs repo Settings → Pages → Source: GitHub Actions.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'vault-viewer/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vault-viewer
+    env:
+      VAULT_SETTINGS: ${{ vars.VAULT_SETTINGS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: vault-viewer/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: vault-viewer/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

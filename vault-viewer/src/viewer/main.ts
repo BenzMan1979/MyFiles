@@ -5,7 +5,7 @@ import { formatSize } from '../core/mime';
 import { APP_NAME, openPageOf } from '../shared/config';
 import { clear, formatDateTime, h, saveBlob } from '../shared/dom';
 import { installAutoLock, installGuards, watermarkBackground, watermarkText } from './protect';
-import { iconFor, renderPreview } from './preview';
+import { iconFor, renderPreview, usesContent } from './preview';
 import { offlineLockedOut, unlockVault, UnlockError, type OpenedVault } from './unlock';
 
 const app = document.getElementById('app')!;
@@ -329,7 +329,8 @@ function showMain(payload: Payload, opened: OpenedVault) {
     box.append(h('div', { class: 'empty' }, h('div', { class: 'spinner' }), h('p', { class: 'muted' }, '解密中…')));
     scroll.scrollTop = 0;
     try {
-      const data = await readFile(header, reader, entry, contentKey);
+      // files that cannot be previewed are only decrypted if the recipient downloads them
+      const data = usesContent(entry) ? await readFile(header, reader, entry, contentKey) : new Uint8Array(0);
       if (seq !== renderSeq) return;
       clear(box);
       const dispose = await renderPreview(box, entry, data, { allowDownload: prot.allowDownload, download: () => download(entry) });

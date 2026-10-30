@@ -41,6 +41,16 @@
    - **Variables**（選填）：`VAULT_SETTINGS`，內容是下面「參數」的 JSON。
 4. 到 Actions 頁籤執行「Deploy to Cloudflare」，之後推送到 `main` 也會自動部署。
 
+### 開發時的預覽：GitHub Pages（選用）
+
+`.github/workflows/deploy-pages.yml` 會在推送到 `main` 後約一分鐘，把打包器（`/`）和手機檢視頁（`/open.html`）發布到 GitHub Pages，方便開發時馬上看效果。
+需要在 repo 的 **Settings → Pages → Source** 選「GitHub Actions」。Pages 是靜態網站，**沒有伺服器**：離線封存檔完全可用；要用線上模式，在打包器的「伺服器設定」貼上你部署在 Cloudflare 的網址。
+
+### 讓 Cloudflare 跟著 GitHub 自動更新
+
+用方法二（連結 Git）或方法三（Actions）部署後，之後只要更新 GitHub，Cloudflare 就會自動重新部署，不用手動更新；封存檔的資料存在 Cloudflare 上，重新部署不會被清掉。
+想把「開發」和「正式」分開：在 Cloudflare 的專案設定把**生產分支**改成 `release`，開發時推 `main`（看 Pages 預覽），確定沒問題再把 `main` 合併到 `release`，Cloudflare 才會更新。
+
 ### 方法四：自己的電腦
 
 ```bash
@@ -67,7 +77,7 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
       "cloudflareSignup": "https://dash.cloudflare.com/sign-up",
       "cloudflareDashboard": "https://dash.cloudflare.com/"
     },
-    "limits": { "maxRecipients": 500, "maxTotalMB": 300, "minPasswordLength": 6 },
+    "limits": { "maxRecipients": 500, "maxTotalMB": 300, "phoneMB": 100, "minPasswordLength": 6 }, // phoneMB：超過就提醒手機可能打不開
     "defaults": {                 // 打包精靈一開始的預設值
       "expiryDays": 30,           // null＝不限期
       "maxFailures": 5, "sessionMinutes": 30, "idleLockMinutes": 10, "blurLockSeconds": 0,

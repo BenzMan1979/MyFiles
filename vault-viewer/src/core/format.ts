@@ -252,7 +252,10 @@ function checkHeader(h: VaultHeader): VaultHeader {
 export function readPayloadFromDocument(doc: Document): Payload | null {
   const h = doc.getElementById('vault-header');
   if (!h) return null;
-  const chunks = Array.from(doc.querySelectorAll('script.vault-chunk'), (s) => s.textContent ?? '');
+  const nodes = Array.from(doc.querySelectorAll('script.vault-chunk'));
+  const chunks = nodes.map((s) => s.textContent ?? '');
+  // The page would otherwise keep a second copy of the whole payload for as long as it is open.
+  nodes.forEach((s) => s.remove());
   return { header: checkHeader(JSON.parse(h.textContent ?? '')), chunks };
 }
 

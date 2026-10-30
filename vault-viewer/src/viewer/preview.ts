@@ -22,6 +22,12 @@ export function decodeText(data: Uint8Array): string {
   return utf.replace(/^﻿/, '');
 }
 
+/** Kinds that are shown from the file's content; for the rest nothing needs decrypting until download. */
+export function usesContent(entry: FileEntry): boolean {
+  const kind = kindOf(entry.path, entry.mime);
+  return kind !== 'other' && kind !== 'slides';
+}
+
 export interface PreviewContext {
   allowDownload: boolean;
   download: () => void;
