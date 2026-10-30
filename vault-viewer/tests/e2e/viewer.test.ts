@@ -167,6 +167,44 @@ describe('Word and Excel previews', () => {
   });
 });
 
+describe('PDF text', () => {
+  it('can be selected only when copying is allowed', async () => {
+    const open = async (name: string, allowCopy: boolean) => {
+      const { path, key } = await makeVault(name, { protection: { ...DEFAULT_PROTECTION, allowCopy } });
+      const page = await openPage(path);
+      await unlock(page, 'abcd-efgh-jkmn', key);
+      await page.waitForSelector('.tree');
+      await page.click('.file:has-text("報價單.pdf")');
+      await page.waitForSelector('.pdf-page canvas', { timeout: 30_000 });
+      return page;
+    };
+    const locked = await open('pdf-nocopy', false);
+    expect(await locked.locator('.textLayer').count()).toBe(0); // no hidden text to copy
+    await locked.close();
+
+    const free = await open('pdf-copy', true);
+    await free.waitForSelector('.textLayer span');
+    expect(await free.locator('.textLayer').innerText()).toContain('Hello PDF');
+    // the text really is selectable and lines up with the page
+    const sel = await free.evaluate(() => {
+      const span = document.querySelector('.textLayer span') as HTMLElement;
+      const range = document.createRange();
+      range.selectNodeContents(span);
+      const s = getSelection()!;
+      s.removeAllRanges();
+      s.addRange(range);
+      const r = span.getBoundingClientRect();
+      const page = span.closest('.pdf-page')!.getBoundingClientRect();
+      return { text: s.toString(), inside: r.left >= page.left - 1 && r.right <= page.right + 1 && r.top >= page.top - 1 && r.bottom <= page.bottom + 1, userSelect: getComputedStyle(span).userSelect };
+    });
+    expect(sel.text).toContain('Hello PDF');
+    expect(sel.inside).toBe(true);
+    expect(sel.userSelect).not.toBe('none');
+    await free.screenshot({ path: join(OUT, 'pdf-textlayer.png') });
+    await free.close();
+  });
+});
+
 describe('watermark visibility', () => {
   // Content such as a PDF page is white even in dark mode, so the mark must show on light and dark.
   for (const scheme of ['dark', 'light'] as const) {

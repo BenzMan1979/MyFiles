@@ -108,6 +108,21 @@ function showUnlock(payload: Payload, notice?: string) {
     checkKey();
   };
   keyFile.addEventListener('change', () => keyFile.files?.[0] && loadKeyFile(keyFile.files[0]));
+  const canScan = typeof navigator.mediaDevices?.getUserMedia === 'function';
+  const scanKey = async () => {
+    error.textContent = '';
+    try {
+      const { scanKeyQr } = await import('./scan');
+      const text = await scanKeyQr();
+      if (text) {
+        keyText.value = text;
+        checkKey();
+        pw.focus();
+      }
+    } catch (e) {
+      error.textContent = (e as Error).message;
+    }
+  };
   dropTarget(keyText, loadKeyFile);
 
   let keyBlock: HTMLElement;
@@ -118,7 +133,10 @@ function showUnlock(payload: Payload, notice?: string) {
     );
   } else {
     keyBlock = h('div', { class: 'field' },
-      h('div', { class: 'label-row' }, h('label', { class: 'label' }, '金鑰'), h('button', { type: 'button', class: 'btn ghost small', onclick: () => keyFile.click() }, '選擇金鑰檔…')),
+      h('div', { class: 'label-row' }, h('label', { class: 'label' }, '金鑰'),
+        h('span', { class: 'key-actions' },
+          canScan ? h('button', { type: 'button', class: 'btn ghost small', onclick: scanKey }, '📷 掃描 QR') : null,
+          h('button', { type: 'button', class: 'btn ghost small', onclick: () => keyFile.click() }, '選擇金鑰檔…'))),
       keyText, keyStatus, keyFile,
     );
   }
@@ -333,7 +351,7 @@ function showMain(payload: Payload, opened: OpenedVault) {
       const data = usesContent(entry) ? await readFile(header, reader, entry, contentKey) : new Uint8Array(0);
       if (seq !== renderSeq) return;
       clear(box);
-      const dispose = await renderPreview(box, entry, data, { allowDownload: prot.allowDownload, download: () => download(entry) });
+      const dispose = await renderPreview(box, entry, data, { allowDownload: prot.allowDownload, allowCopy: prot.allowCopy, download: () => download(entry) });
       if (seq !== renderSeq) dispose();
       else disposePreview = dispose;
     } catch (e) {

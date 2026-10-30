@@ -53,7 +53,12 @@ pre.code { margin: 0; white-space: pre-wrap; word-break: break-word; font: 13.5p
 .pdf-bar { position: sticky; top: -20px; z-index: 2; display: flex; align-items: center; gap: 8px; margin: -20px -20px 16px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 13.5px; }
 .pdf-zoom { min-width: 48px; text-align: center; }
 .pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 14px; }
-.pdf-page { background: #fff; box-shadow: var(--shadow); }
+.pdf-page { position: relative; background: #fff; box-shadow: var(--shadow); }
+/* transparent text over the page image, from pdf.js's own text layer rules */
+.textLayer { position: absolute; inset: 0; overflow: clip; line-height: 1; text-align: initial; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; caret-color: CanvasText; }
+.textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
+.textLayer ::selection { background: rgba(0, 100, 255, 0.3); }
+.textLayer br::selection { background: transparent; }
 .pdf-page canvas { display: block; width: 100%; height: 100%; }
 
 .only-narrow { display: none; }
@@ -84,3 +89,10 @@ table.sheet th { background: var(--surface-2); color: var(--muted); font-weight:
 table.sheet th.rowhead { left: 0; z-index: 2; text-align: right; }
 table.sheet th.corner { left: 0; z-index: 3; }
 table.sheet td.num { text-align: right; }
+
+/* QR scanner */
+.key-actions { display: inline-flex; gap: 4px; }
+.scan-overlay { position: fixed; inset: 0; z-index: 100; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
+.scan-video { width: min(100%, 640px); max-height: 70vh; object-fit: cover; border-radius: 12px; background: #111; }
+.scan-frame { position: absolute; width: min(60vw, 280px); aspect-ratio: 1; border: 3px solid rgba(255, 255, 255, 0.85); border-radius: 16px; pointer-events: none; }
+.scan-hint { color: #fff; margin: 0; text-align: center; }

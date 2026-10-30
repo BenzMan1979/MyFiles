@@ -30,6 +30,7 @@ export function usesContent(entry: FileEntry): boolean {
 
 export interface PreviewContext {
   allowDownload: boolean;
+  allowCopy: boolean;
   download: () => void;
 }
 
@@ -47,7 +48,7 @@ export async function renderPreview(box: HTMLElement, entry: FileEntry, data: Ui
   switch (kind) {
     case 'pdf': {
       const { renderPdf } = await import('./pdf');
-      const dispose = await renderPdf(box, data);
+      const dispose = await renderPdf(box, data, { textLayer: ctx.allowCopy });
       return () => {
         dispose();
         revoke();

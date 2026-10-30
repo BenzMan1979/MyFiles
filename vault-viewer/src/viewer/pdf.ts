@@ -16,7 +16,12 @@ function ensureWorker() {
   pdfjs.GlobalWorkerOptions.workerPort = workerPort;
 }
 
-export async function renderPdf(container: HTMLElement, data: Uint8Array): Promise<() => void> {
+export interface PdfOptions {
+  /** add a transparent text layer so the text can be selected and searched (only when copying is allowed) */
+  textLayer?: boolean;
+}
+
+export async function renderPdf(container: HTMLElement, data: Uint8Array, opts: PdfOptions = {}): Promise<() => void> {
   ensureWorker();
   const task = pdfjs.getDocument({ data, enableXfa: false });
   const doc = await task.promise;
@@ -74,6 +79,13 @@ export async function renderPdf(container: HTMLElement, data: Uint8Array): Promi
     await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;
     if (disposed || s.rendered !== width) return;
     s.el.replaceChildren(canvas);
+    if (opts.textLayer) {
+      const cssScale = width / s.w; // CSS pixels per PDF unit
+      const layer = h('div', { class: 'textLayer' });
+      layer.style.setProperty('--total-scale-factor', String(cssScale));
+      s.el.append(layer);
+      await new pdfjs.TextLayer({ textContentSource: page.streamTextContent(), container: layer, viewport: page.getViewport({ scale: cssScale }) }).render();
+    }
   }
 
   function setZoom(z: number) {

@@ -10,10 +10,10 @@ export function renderHelp(root: HTMLElement) {
     section('收件人怎麼開啟',
       h('ol', { class: 'steps' },
         h('li', null, '電腦：雙擊 .vault.html，用 Chrome、Edge、Firefox 或 Safari 打開。'),
-        h('li', null, '輸入密碼，貼上金鑰文字或選擇 .key 金鑰檔，按「解鎖」。'),
+        h('li', null, '輸入密碼，貼上金鑰文字、選擇 .key 金鑰檔，或按「📷 掃描 QR」用相機掃金鑰卡，再按「解鎖」。'),
         (() => {
           const u = phoneViewerUrl();
-          return h('li', null, '手機：請到 ', u ? h('a', { href: u, target: '_blank', rel: 'noopener' }, u) : '伺服器上的 open.html 頁面', ' 選擇封存檔（金鑰可以用相機掃描金鑰卡上的 QR Code 取得文字再貼上）。');
+          return h('li', null, '手機：請到 ', u ? h('a', { href: u, target: '_blank', rel: 'noopener' }, u) : '伺服器上的 open.html 頁面', ' 選擇封存檔；金鑰按「📷 掃描 QR」用相機掃金鑰卡就能填入。');
         })(),
       ),
     ),
