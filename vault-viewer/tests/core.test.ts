@@ -105,3 +105,25 @@ describe('vault format', () => {
     expect(fromB64(v.header.salt).length).toBe(16);
   });
 });
+
+describe('page groups (a PDF converted to page images)', () => {
+  it('keeps the pages together and in order, and every page decrypts', async () => {
+    const o = opts();
+    const page = (n: number): InputFile => ({ path: `報告.pdf/${String(n).padStart(3, '0')}.jpg`, mime: 'image/jpeg', size: 3, read: async () => utf8(`p${n}`), group: { id: 'g1', path: '報告.pdf', page: n } });
+    const v = await buildVault([mem('備註.txt', utf8('hi')), page(2), page(1), page(3)], o);
+    const html = renderVaultHtml(TEMPLATE, v.header, v.blobParts).join('');
+    const { p, key, manifest } = await unlock(html, 'pw-1234', o.keyfile, null);
+    expect(manifest.groups).toEqual([{ id: 'g1', path: '報告.pdf' }]);
+    const pages = manifest.files.filter((f) => f.group === 'g1').sort((a, b) => a.page! - b.page!);
+    expect(pages.map((f) => f.page)).toEqual([1, 2, 3]);
+    const blob = new ChunkReader(p);
+    expect(await Promise.all(pages.map(async (f) => fromUtf8(await readFile(p.header, blob, f, key))))).toEqual(['p1', 'p2', 'p3']);
+    expect(manifest.files.find((f) => f.path === '備註.txt')!.group).toBeUndefined();
+  });
+  it('writes no group list when nothing was converted', async () => {
+    const o = opts();
+    const v = await buildVault([mem('a.txt', utf8('x'))], o);
+    const { manifest } = await unlock(renderVaultHtml(TEMPLATE, v.header, v.blobParts).join(''), 'pw-1234', o.keyfile, null);
+    expect(manifest.groups).toBeUndefined();
+  });
+});

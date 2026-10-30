@@ -19,6 +19,9 @@ const IMPORT_LIMITS = { maxRecipients: MAX_RECIPIENTS, minPassword: MIN_PASSWORD
 
 interface Draft {
   files: { file: File; path: string }[];
+  /** turn every PDF into page images (no text left to copy; bigger file) */
+  pdfAsImages: boolean;
+  pdfImageWidth: number;
   title: string;
   mode: 'online' | 'offline';
   serverId: string;
@@ -40,6 +43,8 @@ function newDraft(): Draft {
   const preset: Draft['expiryPreset'] = days === null ? 'none' : days === 7 || days === 30 || days === 90 ? (String(days) as '7' | '30' | '90') : 'custom';
   return {
     files: [],
+    pdfAsImages: d.pdfAsImages,
+    pdfImageWidth: d.pdfImageWidth,
     title: '',
     mode: 'online',
     serverId: servers.defaultId(),
@@ -236,6 +241,7 @@ function stepFiles(body: HTMLElement, rerender: () => void) {
         ? h('p', { class: 'note' }, `超過 ${settings.limits.phoneMB}MB 的封存檔，電腦開得起來，但手機（特別是 iPhone）可能因為記憶體不足而打不開。收件人用手機的話，建議分成較小的幾份。`)
         : null,
       total > SIZE_LIMIT ? h('p', { class: 'note warn' }, `總大小超過 ${settings.limits.maxTotalMB}MB，收件人開啟時可能很慢或開不起來。建議先壓縮影片，或分成幾份封存。`) : null,
+      sorted.some((f) => extOf(f.path) === 'pdf') ? pdfImageOptions(rerender) : null,
       h('div', { class: 'file-table' },
         ...sorted.map((f) => {
           const warn = fileWarning(f.path);
@@ -249,6 +255,17 @@ function stepFiles(body: HTMLElement, rerender: () => void) {
       ),
       h('button', { class: 'btn small danger', onclick: async () => { if (await confirmDialog('清除全部檔案', '確定要清除已加入的所有檔案嗎？', '清除', true)) { draft.files = []; rerender(); } } }, '清除全部'),
     ),
+  );
+}
+
+function pdfImageOptions(rerender: () => void) {
+  const widths: [number, string][] = [[1200, '省空間（1200 px）'], [1600, '標準（1600 px）'], [2400, '高畫質（2400 px）']];
+  const sel = h('select', { class: 'input narrow' }, ...widths.map(([w, label]) => h('option', { value: w, selected: draft.pdfImageWidth === w }, label)));
+  sel.addEventListener('change', () => (draft.pdfImageWidth = Number(sel.value)));
+  return h('div', { class: 'pdf-images' },
+    toggle('把 PDF 轉成逐頁圖片', draft.pdfAsImages, (v) => { draft.pdfAsImages = v; rerender(); },
+      '轉成圖片後，封存檔裡完全沒有文字可以複製或搜尋，適合簡報（PowerPoint 匯出的 PDF）。代價是檔案會變大好幾倍，而且收件人不能下載原本的 PDF。'),
+    draft.pdfAsImages ? field('圖片畫質', sel, '字很小的文件選「高畫質」。') : null,
   );
 }
 
@@ -583,12 +600,24 @@ async function generate(onProgress: (done: number, all: number, label: string) =
     maxOpens: draft.limitOpens ? draft.maxOpens : null,
   };
   const batchId = randomId(8);
-  const inputs: InputFile[] = draft.files.map((f) => ({
-    path: f.path,
-    mime: guessMime(f.path, f.file.type),
-    size: f.file.size,
-    read: async () => new Uint8Array(await f.file.arrayBuffer()),
-  }));
+  const inputs: InputFile[] = [];
+  for (const f of draft.files) {
+    if (draft.pdfAsImages && extOf(f.path) === 'pdf') {
+      // converted once here, then every recipient's vault reuses the same page images
+      onProgress(0, 1, `正在把「${f.path}」轉成圖片…`);
+      const { pdfToImages } = await import('./pdfImages');
+      let pages: Uint8Array[];
+      try {
+        pages = await pdfToImages(new Uint8Array(await f.file.arrayBuffer()), { width: draft.pdfImageWidth, quality: settings.defaults.pdfImageQuality }, (done, all) => onProgress(done, all, `正在把「${f.path}」轉成圖片…（${done}/${all} 頁）`));
+      } catch (e) {
+        throw new Error(`無法轉換「${f.path}」：${(e as Error).message}`);
+      }
+      const group = randomId(6);
+      pages.forEach((bytes, i) => inputs.push({ path: `${f.path}/${String(i + 1).padStart(3, '0')}.jpg`, mime: 'image/jpeg', size: bytes.length, read: async () => bytes, group: { id: group, path: f.path, page: i + 1 } }));
+    } else {
+      inputs.push({ path: f.path, mime: guessMime(f.path, f.file.type), size: f.file.size, read: async () => new Uint8Array(await f.file.arrayBuffer()) });
+    }
+  }
   const total = inputs.reduce((n, f) => n + f.size, 0) || 1;
   const n = draft.recipients.length;
   const items: BatchOutput['items'] = [];

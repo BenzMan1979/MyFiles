@@ -1,20 +1,7 @@
-// PDF rendering with pdf.js. The worker source is bundled as text and started from a Blob URL so
-// it also works when the vault is opened from file:// with no network. Chrome refuses *module*
-// workers from blob URLs on file:// pages, so the ES module worker is turned into a classic script.
+// PDF pages drawn with pdf.js, loaded as the person scrolls.
 
-import * as pdfjs from 'pdfjs-dist';
-import workerCode from 'pdfjs-dist/build/pdf.worker.min.mjs?raw';
 import { h } from '../shared/dom';
-
-let workerPort: Worker | null = null;
-
-function ensureWorker() {
-  if (workerPort) return;
-  const classic = workerCode.replace(/import\.meta\.url/g, 'self.location.href').replace(/export\s*\{[^}]*\}\s*;?\s*$/, '');
-  const url = URL.createObjectURL(new Blob([classic], { type: 'text/javascript' }));
-  workerPort = new Worker(url);
-  pdfjs.GlobalWorkerOptions.workerPort = workerPort;
-}
+import { loadPdfjs } from '../shared/pdfjs';
 
 export interface PdfOptions {
   /** add a transparent text layer so the text can be selected and searched (only when copying is allowed) */
@@ -22,7 +9,7 @@ export interface PdfOptions {
 }
 
 export async function renderPdf(container: HTMLElement, data: Uint8Array, opts: PdfOptions = {}): Promise<() => void> {
-  ensureWorker();
+  const pdfjs = loadPdfjs();
   const task = pdfjs.getDocument({ data, enableXfa: false });
   const doc = await task.promise;
   let zoom = 1;

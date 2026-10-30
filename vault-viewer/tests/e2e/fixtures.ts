@@ -4,17 +4,20 @@ import { zipSync } from 'fflate';
 import { utf8 } from '../../src/core/bytes';
 import type { InputFile } from '../../src/core/format';
 
-/** A tiny but valid one-page PDF that says "Hello PDF". */
-export function minimalPdf(): Uint8Array {
-  const objs = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
-    null,
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-  ];
-  const stream = 'BT /F1 24 Tf 60 100 Td (Hello PDF) Tj ET';
-  objs[3] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+/** A tiny but valid PDF whose pages say "Hello PDF" (page 1) or "Page N". */
+export function minimalPdf(pages = 1): Uint8Array {
+  const objs: string[] = ['', '', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>']; // 1 catalog, 2 page tree, 3 font
+  const kids: string[] = [];
+  for (let i = 0; i < pages; i++) {
+    const pageNo = 4 + i * 2;
+    kids.push(`${pageNo} 0 R`);
+    const text = pages === 1 ? 'Hello PDF' : `Page ${i + 1}`;
+    const stream = `BT /F1 24 Tf 60 100 Td (${text}) Tj ET`;
+    objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents ${pageNo + 1} 0 R /Resources << /Font << /F1 3 0 R >> >> >>`);
+    objs.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+  }
+  objs[0] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objs[1] = `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${pages} >>`;
   let out = '%PDF-1.4\n';
   const offsets: number[] = [];
   objs.forEach((o, i) => {

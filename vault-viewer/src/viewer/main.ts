@@ -5,7 +5,7 @@ import { formatSize } from '../core/mime';
 import { APP_NAME, openPageOf } from '../shared/config';
 import { clear, formatDateTime, h, saveBlob } from '../shared/dom';
 import { installAutoLock, installGuards, watermarkBackground, watermarkText } from './protect';
-import { iconFor, renderPreview, usesContent } from './preview';
+import { GROUP_PREFIX, iconFor, PAGES_MIME, renderPages, renderPreview, usesContent } from './preview';
 import { offlineLockedOut, unlockVault, UnlockError, type OpenedVault } from './unlock';
 
 const app = document.getElementById('app')!;
@@ -282,11 +282,25 @@ function showMain(payload: Payload, opened: OpenedVault) {
   // sidebar
   const search = h('input', { class: 'input', type: 'search', placeholder: '搜尋檔名…', 'aria-label': '搜尋檔名' });
   const treeEl = h('nav', { class: 'tree', 'aria-label': '檔案列表' });
-  const tree = buildTree(manifest.files);
+  // A PDF that was converted to pictures is one document in the tree, not one file per page.
+  const pagesOf = new Map<string, FileEntry[]>();
+  for (const f of manifest.files) if (f.group) pagesOf.set(f.group, [...(pagesOf.get(f.group) ?? []), f]);
+  for (const list of pagesOf.values()) list.sort((a, b) => (a.page ?? 0) - (b.page ?? 0));
+  const documents: FileEntry[] = (manifest.groups ?? []).map((g) => ({
+    id: GROUP_PREFIX + g.id,
+    path: g.path,
+    size: (pagesOf.get(g.id) ?? []).reduce((n, p) => n + p.size, 0),
+    mime: PAGES_MIME,
+    offset: 0,
+    length: 0,
+    iv: '',
+  }));
+  const shown = [...manifest.files.filter((f) => !f.group), ...documents];
+  const tree = buildTree(shown);
   const total = manifest.files.reduce((n, f) => n + f.size, 0);
   const side = h('aside', { class: 'sidebar protected' },
     search, treeEl,
-    h('div', { class: 'side-foot muted' }, `${manifest.files.length} 個檔案 · ${formatSize(total)}`),
+    h('div', { class: 'side-foot muted' }, `${shown.length} 個檔案 · ${formatSize(total)}`),
   );
 
   // content
@@ -317,7 +331,7 @@ function showMain(payload: Payload, opened: OpenedVault) {
     box.append(h('div', { class: 'empty' },
       h('div', { class: 'big-icon' }, '📂'),
       h('p', null, '從左側選擇一個檔案來檢視'),
-      h('p', { class: 'muted' }, `共 ${manifest.files.length} 個檔案`),
+      h('p', { class: 'muted' }, `共 ${shown.length} 個檔案`),
     ));
   };
 
@@ -342,11 +356,18 @@ function showMain(payload: Payload, opened: OpenedVault) {
       h('span', { class: 'muted small' }, formatSize(entry.size)),
       h('span', { class: 'spacer' }),
     );
-    if (prot.allowDownload) fileBar.append(h('button', { class: 'btn small', onclick: () => download(entry) }, '⬇ 下載'));
+    if (prot.allowDownload && entry.mime !== PAGES_MIME) fileBar.append(h('button', { class: 'btn small', onclick: () => download(entry) }, '⬇ 下載'));
     clear(box);
     box.append(h('div', { class: 'empty' }, h('div', { class: 'spinner' }), h('p', { class: 'muted' }, '解密中…')));
     scroll.scrollTop = 0;
     try {
+      if (entry.mime === PAGES_MIME) {
+        clear(box);
+        const dispose = await renderPages(box, pagesOf.get(entry.id.slice(GROUP_PREFIX.length)) ?? [], (p) => readFile(header, reader, p, contentKey));
+        if (seq !== renderSeq) dispose();
+        else disposePreview = dispose;
+        return;
+      }
       // files that cannot be previewed are only decrypted if the recipient downloads them
       const data = usesContent(entry) ? await readFile(header, reader, entry, contentKey) : new Uint8Array(0);
       if (seq !== renderSeq) return;
@@ -371,7 +392,7 @@ function showMain(payload: Payload, opened: OpenedVault) {
     }, h('span', { class: 'file-icon' }, iconFor(f)), h('span', { class: 'file-label' }, label));
 
   const expanded = new Set<string>();
-  const autoExpand = manifest.files.length <= 60;
+  const autoExpand = shown.length <= 60;
   const renderNode = (node: TreeNode, depth: number, out: HTMLElement[]) => {
     for (const d of [...node.dirs.values()].sort((a, b) => collator.compare(a.name, b.name))) {
       const open = expanded.has(d.path) || (autoExpand && !expanded.has(`!${d.path}`));
@@ -399,7 +420,7 @@ function showMain(payload: Payload, opened: OpenedVault) {
     clear(treeEl);
     const q = search.value.trim().toLowerCase();
     if (q) {
-      const hits = manifest.files.filter((f) => f.path.toLowerCase().includes(q));
+      const hits = shown.filter((f) => f.path.toLowerCase().includes(q));
       if (!hits.length) treeEl.append(h('p', { class: 'muted pad' }, '找不到符合的檔案'));
       for (const f of hits) treeEl.append(fileRow(f, 0, f.path));
       return;
@@ -411,7 +432,7 @@ function showMain(payload: Payload, opened: OpenedVault) {
   search.addEventListener('input', renderTree);
   renderTree();
 
-  if (manifest.files.length === 1) void select(manifest.files[0]);
+  if (shown.length === 1) void select(shown[0]);
   else welcome();
 }
 

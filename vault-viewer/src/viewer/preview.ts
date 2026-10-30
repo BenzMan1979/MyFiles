@@ -22,6 +22,65 @@ export function decodeText(data: Uint8Array): string {
   return utf.replace(/^﻿/, '');
 }
 
+/** The stand-in entry of a converted PDF (see PageGroup): its pages are separate encrypted images. */
+export const PAGES_MIME = 'application/x-vault-pages';
+export const GROUP_PREFIX = 'group:';
+
+/** Page images, decrypted only when they scroll near the screen. */
+export async function renderPages(box: HTMLElement, pages: FileEntry[], read: (page: FileEntry) => Promise<Uint8Array>): Promise<() => void> {
+  let zoom = 1;
+  let disposed = false;
+  const urls: string[] = [];
+  const list = h('div', { class: 'page-images' });
+  const label = h('span', { class: 'pdf-zoom' }, '100%');
+  const setZoom = (z: number) => {
+    zoom = Math.min(3, Math.max(0.3, z));
+    label.textContent = `${Math.round(zoom * 100)}%`;
+    list.style.setProperty('--page-zoom', String(zoom));
+  };
+  const bar = h('div', { class: 'pdf-bar' },
+    h('span', null, `共 ${pages.length} 頁`),
+    h('span', { class: 'spacer' }),
+    h('button', { class: 'btn small', title: '縮小', onclick: () => setZoom(zoom / 1.25) }, '－'),
+    label,
+    h('button', { class: 'btn small', title: '放大', onclick: () => setZoom(zoom * 1.25) }, '＋'),
+    h('button', { class: 'btn small', onclick: () => setZoom(1) }, '符合寬度'),
+  );
+  const slots = pages.map((_p, i) => h('div', { class: 'page-image', 'data-page': i }, h('div', { class: 'spinner' })));
+  list.append(...slots);
+  box.append(bar, list);
+
+  const loaded = new Set<number>();
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        const i = Number((e.target as HTMLElement).dataset.page);
+        if (!e.isIntersecting || loaded.has(i)) continue;
+        loaded.add(i);
+        void (async () => {
+          try {
+            const bytes = await read(pages[i]);
+            if (disposed) return;
+            const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: pages[i].mime }));
+            urls.push(url);
+            const img = h('img', { src: url, alt: `第 ${i + 1} 頁`, draggable: 'false' });
+            img.addEventListener('load', () => slots[i].replaceChildren(img), { once: true });
+          } catch {
+            slots[i].replaceChildren(h('p', { class: 'error' }, `第 ${i + 1} 頁無法顯示`));
+          }
+        })();
+      }
+    },
+    { root: box.closest('.preview-scroll'), rootMargin: '800px 0px' },
+  );
+  slots.forEach((s) => io.observe(s));
+  return () => {
+    disposed = true;
+    io.disconnect();
+    urls.forEach((u) => URL.revokeObjectURL(u));
+  };
+}
+
 /** Kinds that are shown from the file's content; for the rest nothing needs decrypting until download. */
 export function usesContent(entry: FileEntry): boolean {
   const kind = kindOf(entry.path, entry.mime);
@@ -144,6 +203,7 @@ export async function renderPreview(box: HTMLElement, entry: FileEntry, data: Ui
 }
 
 export function iconFor(entry: FileEntry): string {
+  if (entry.mime === PAGES_MIME) return '📕';
   switch (kindOf(entry.path, entry.mime)) {
     case 'pdf': return '📕';
     case 'image': return '🖼️';

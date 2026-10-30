@@ -30,7 +30,10 @@
         "opacity": 0.16,
         "size": 18,
         "density": 3
-      }
+      },
+      "pdfAsImages": false,
+      "pdfImageWidth": 1600,
+      "pdfImageQuality": 85
     }
   },
   "server": {

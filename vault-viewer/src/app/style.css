@@ -159,3 +159,5 @@ dialog.modal::backdrop { background: rgba(10, 14, 20, 0.45); }
   .result-grid { grid-template-columns: 1fr; }
   .step { flex-direction: column; gap: 8px; }
 }
+
+.pdf-images { background: var(--surface-2); border-radius: 10px; padding: 4px 14px 10px; margin: 8px 0 12px; }

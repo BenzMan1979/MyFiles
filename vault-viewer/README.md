@@ -82,6 +82,7 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
       "expiryDays": 30,           // null＝不限期
       "maxFailures": 5, "sessionMinutes": 30, "idleLockMinutes": 10, "blurLockSeconds": 0,
       "allowCopy": false, "allowPrint": false, "allowDownload": false,
+      "pdfAsImages": false, "pdfImageWidth": 1600, "pdfImageQuality": 85,  // PDF 是否預設轉成圖片、圖片寬度（px）與 JPEG 畫質
       "watermark": { "enabled": true, "text": "{收件人}  {時間}", "opacity": 0.16, "size": 18, "density": 3 }
     }
   },
@@ -115,6 +116,7 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
   - Word 用 docx-preview 呈現，版面可能和 Word 略有差異；Excel 顯示儲存時的計算結果（不含公式、圖表、圖片），分頁以工作表標籤切換
   - 舊版 .doc／.xls 和 PowerPoint 無法預覽，請先另存成新版或 PDF
   - PDF 在**允許複製**時多一層透明文字，可以選取、搜尋；不允許時完全沒有文字層（沒有東西可複製）
+  - 打包時可以選**把 PDF 轉成逐頁圖片**（適合簡報）：封存檔裡完全沒有文字，收件人看到的是一份可捲動的文件；檔案會大好幾倍，也不能下載原 PDF
 - 防護：浮水印（可調濃淡、字型大小、密集程度）、禁止複製／列印／下載、閒置或離開視窗自動上鎖
   - 浮水印可以插入 `{收件人}` `{時間}` `{日期}` `{IP}` `{地區}` `{裝置}` `{編號}` `{備註}`；`{IP}`、`{地區}` 是伺服器看到的對外位址（只有線上模式有）
   - `{編號}` 是每次開啟隨機產生的代碼，線上模式會連同時間、IP 記在開啟紀錄裡，外流的截圖可以靠它查出是哪一次開啟

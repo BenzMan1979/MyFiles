@@ -69,6 +69,15 @@ export interface FileEntry {
   offset: number;
   length: number;
   iv: string;
+  /** set on the page images of a PDF that was converted: they are shown as one document, not as files */
+  group?: string;
+  page?: number;
+}
+
+/** A document made of page images (a PDF converted to pictures); `path` is how it appears in the tree. */
+export interface PageGroup {
+  id: string;
+  path: string;
 }
 
 export interface Manifest {
@@ -81,6 +90,7 @@ export interface Manifest {
   policy: Policy;
   protection: Protection;
   files: FileEntry[];
+  groups?: PageGroup[];
 }
 
 export interface VaultHeader {
@@ -103,6 +113,8 @@ export interface InputFile {
   mime: string;
   size: number;
   read: () => Promise<Uint8Array>;
+  /** this file is page `page` (1-based) of the document `group` */
+  group?: { id: string; path: string; page: number };
 }
 
 export interface BuildOptions {
@@ -156,12 +168,15 @@ export async function buildVault(
     const fid = randomId(8);
     const iv = randomBytes(12);
     const ct = await aesEncrypt(contentKey, iv, await f.read(), fileAad(id, fid));
-    entries.push({ id: fid, path: f.path, size: f.size, mime: f.mime, offset, length: ct.length, iv: toB64(iv) });
+    entries.push({ id: fid, path: f.path, size: f.size, mime: f.mime, offset, length: ct.length, iv: toB64(iv), ...(f.group ? { group: f.group.id, page: f.group.page } : {}) });
     blobParts.push(ct);
     offset += ct.length;
     done += f.size;
     onProgress?.(done, total);
   }
+
+  const groups: PageGroup[] = [];
+  for (const f of files) if (f.group && !groups.some((g) => g.id === f.group!.id)) groups.push({ id: f.group.id, path: f.group.path });
 
   const manifest: Manifest = {
     title: o.title,
@@ -172,6 +187,7 @@ export async function buildVault(
     policy: o.policy,
     protection: o.protection,
     files: entries,
+    groups: groups.length ? groups : undefined,
   };
   const base: Omit<VaultHeader, 'manifest'> = {
     format: FORMAT,

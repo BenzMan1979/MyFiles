@@ -36,6 +36,11 @@ export interface AppSettings {
     allowPrint: boolean;
     allowDownload: boolean;
     watermark: { enabled: boolean; text: string; opacity: number; size: number; density: number };
+    /** convert PDFs to page images by default (no text left to copy; bigger files) */
+    pdfAsImages: boolean;
+    /** width in pixels and JPEG quality (1-100) of those page images */
+    pdfImageWidth: number;
+    pdfImageQuality: number;
   };
 }
 
@@ -60,6 +65,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     allowPrint: false,
     allowDownload: false,
     watermark: { enabled: true, text: '{收件人}  {時間}', opacity: 0.16, size: 18, density: 3 },
+    pdfAsImages: false,
+    pdfImageWidth: 1600,
+    pdfImageQuality: 85,
   },
 };
 
@@ -119,6 +127,9 @@ export function resolveSettings(raw: unknown): AppSettings {
         size: num(wm.size, d.defaults.watermark.size, 10, 48),
         density: num(wm.density, d.defaults.watermark.density, 1, 5),
       },
+      pdfAsImages: bool(def.pdfAsImages, d.defaults.pdfAsImages),
+      pdfImageWidth: num(def.pdfImageWidth, d.defaults.pdfImageWidth, 600, 4000),
+      pdfImageQuality: num(def.pdfImageQuality, d.defaults.pdfImageQuality, 30, 100),
     },
   };
 }
