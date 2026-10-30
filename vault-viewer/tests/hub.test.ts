@@ -64,8 +64,10 @@ describe('hub', () => {
   it('changes the admin password', async () => {
     const t = await admin();
     expect((await call('POST', '/api/admin/password', { current: 'admin-pass', next: 'new-pass-123' }, t)).status).toBe(200);
-    expect((await call('POST', '/api/admin/login', { password: 'admin-pass' })).status).toBe(401);
     expect((await call('POST', '/api/admin/login', { password: 'new-pass-123' })).status).toBe(200);
+    // the password from deployment stays valid as the spare key, so a changed or lost password cannot lock the owner out
+    expect((await call('POST', '/api/admin/login', { password: 'admin-pass' })).status).toBe(200);
+    expect((await call('POST', '/api/admin/login', { password: 'something-else' })).status).toBe(401);
     expect((await call('GET', '/api/admin/vaults', undefined, t)).status).toBe(401); // old sessions revoked
   });
 

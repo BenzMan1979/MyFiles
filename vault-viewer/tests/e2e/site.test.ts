@@ -32,23 +32,39 @@ const open = async (url: string): Promise<Page> => {
 };
 
 describe('packer served by the server itself (one address for pages and API)', () => {
-  it('recognises its own server, so there is nothing to deploy or paste', async () => {
+  it('adds its own server by itself, so only the admin login is left', async () => {
     const p = await open(`${site.url}/#servers`);
-    await p.waitForSelector('text=這個網站本身就是你的伺服器');
-    await expect(p.locator('.wizard').count()).resolves.toBe(1); // still reachable under "use another server"
-    expect(await p.locator('details.more >> text=要改用另一台伺服器').count()).toBe(1);
-    await p.fill('.section.here input[type=password]', 'wrong');
-    await p.click('.section.here button:has-text("登入並儲存")');
-    await p.waitForSelector('.section.here .error:has-text("不正確")');
-    await p.fill('.section.here input[type=password]', 'site-admin-pass');
-    await p.click('.section.here button:has-text("登入並儲存")');
     await p.waitForSelector('.server-card');
     await expect(p.locator('.server-card').textContent()).resolves.toContain(site.url.replace('http://', ''));
+    await expect(p.locator('.server-card').textContent()).resolves.toContain('管理員未登入');
+    await p.click('.server-card button:has-text("登入")');
+    await p.fill('dialog input[type=password]', 'wrong');
+    await p.click('dialog button:has-text("登入")');
+    await p.waitForSelector('dialog .error:has-text("不正確")');
+    await p.fill('dialog input[type=password]', 'site-admin-pass');
+    await p.click('dialog button:has-text("登入")');
+    await p.waitForSelector('.server-card:has-text("管理員已登入")');
     await p.screenshot({ path: join(OUT, 'own-server.png') });
     // the phone link is this very site
     await p.click('.app-nav a:has-text("使用說明")');
     await p.waitForSelector(`a[href="${site.url}/open.html"]`);
+    // removing it on purpose keeps it removed after a reload
+    await p.click('.app-nav a:has-text("伺服器設定")');
+    await p.click('.server-card button:has-text("移除")');
+    await p.click('dialog button:has-text("移除")');
+    await p.reload();
+    await p.waitForSelector('.wizard, .section.here');
+    await expect(p.locator('.server-card').count()).resolves.toBe(0);
     await p.close();
+  });
+
+  it('still offers the setup card when the server has no admin password yet', async () => {
+    const fresh = await startSite('');
+    const p = await open(`${fresh.url}/#servers`);
+    await p.waitForSelector('text=這個網站本身就是你的伺服器');
+    await expect(p.locator('.server-card').count()).resolves.toBe(0);
+    await p.close();
+    fresh.server.close();
   });
 
   it('opens a vault on the same site /open.html, as a phone would', async () => {

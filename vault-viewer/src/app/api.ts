@@ -16,6 +16,7 @@ export class ApiError extends Error {
 
 const LS_SERVERS = 'vault-packer:servers';
 const LS_DEFAULT = 'vault-packer:default-server';
+const LS_NO_AUTO = 'vault-packer:no-auto';
 const SS_TOKEN = 'vault-packer:token:';
 
 function lsGet<T>(k: string, d: T): T {
@@ -46,10 +47,14 @@ export const servers = {
     if (!servers.defaultId()) servers.setDefault(p.id);
   },
   remove(id: string) {
+    // Whoever deletes the entry for this very site does not want it added back by itself.
+    if (servers.get(id)?.url === location.origin) lsSet(LS_NO_AUTO, true);
     servers.save(servers.list().filter((s) => s.id !== id));
     tokens.clear(id);
     if (servers.defaultId() === id) servers.setDefault(servers.list()[0]?.id ?? '');
   },
+  /** True unless the entry for this very site was deleted on purpose. */
+  autoAddAllowed: (): boolean => !lsGet<boolean>(LS_NO_AUTO, false),
   defaultId: (): string => lsGet<string>(LS_DEFAULT, ''),
   setDefault(id: string) {
     lsSet(LS_DEFAULT, id);

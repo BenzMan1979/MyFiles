@@ -58,12 +58,15 @@
 打包器網頁本身沒有機密，管理 API 也有管理員密碼與錯誤鎖定，不加 Access 也安全。想再多一層「只有自己人進得去打包器」，可以用 Cloudflare Access，
 但**要小心：不能整個網站一起鎖**。收件人開啟線上封存檔時，是在他們的瀏覽器裡直接呼叫這個網址的 `/api/open`；整站都被 Access 擋住，他們就**打不開**（離線封存檔不受影響，因為不連線）。
 
-需要用自己的網域（Access 才能分路徑設定），建兩個 Access 應用程式：
+需要用自己的網域（Access 才能分路徑設定）。在 Cloudflare 的 Zero Trust →「Access 控制」→「應用程式」建立兩個「自我裝載」應用程式，類型選「公開 DNS」（不要選「Workers」，那個會整個 Worker 一起鎖）：
 
-| 路徑 | 設定 |
-|---|---|
-| `/`（含 `/index.html`）、`/api/admin/*` | **要登入**（只允許你自己或同事的 Email） |
-| `/open.html`、`/api/open*` | **Bypass（不驗證）**，讓收件人和手機檢視頁可以使用 |
+| 應用程式 | 公開主機名稱（路徑） | 原則 |
+|---|---|---|
+| A：打包器 | 你的網域，**路徑留空**（整個網站） | **允許**，條件「電子郵件」填你自己（和同事）的 Email |
+| B：收件人入口 | 同一個網域，三筆路徑：`open.html`、`api/open`、`api/open/*` | **略過（Bypass）**，條件「所有人」 |
+
+路徑更精確的應用程式優先，所以 B 的那三處不用登入，其餘全部要登入。放行的那幾處本來就有保護：要同時有密碼和金鑰才解得開，錯太多次會鎖定，也能隨時收回。
+設好之後：從檔案開啟的「離線打包器」連不到被保護的管理 API（它沒有 Access 的登入），只能做離線模式的封存檔；要做線上封存檔或管理，請用網站上的打包器。GitHub Pages 預覽頁同理。
 
 `/api/info` 只是連線檢查，保護或不保護都可以。更簡單的替代：不加 Access，改用參數 `ADMIN_ORIGINS` 限制只有你的網址能從瀏覽器呼叫管理 API。
 Workers 設定裡「用 Cloudflare Access 保護 workers.dev」的開關是整個 Worker 一起鎖，無法排除路徑，所以**有線上封存檔要給別人開時不要用那個開關**。
@@ -88,6 +91,7 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
     "appName": "隨身密閱",        // 產品名稱
     "workerName": "vault-viewer", // 只用在說明文字裡的範例網址
     "projectDir": "vault-viewer", // 專案在 repo 裡的資料夾（說明文字與部署連結用）
+    "autoAddServer": true,        // 從伺服器本身的網址開啟打包器時，自動把這台伺服器加進清單（只差輸入管理員密碼）
     "links": {
       "deployRepo": "…",          // 一鍵部署要複製的 repo 資料夾；不寫＝自動指向正在建置的 repo；""＝隱藏按鈕
       "deployButtonBase": "https://deploy.workers.cloudflare.com/?url=",
@@ -114,7 +118,7 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
 }
 ```
 
-- `ADMIN_PASSWORD` 是**機密**，不放在參數裡：一鍵部署時填，或用 `VAULT_ADMIN_PASSWORD` Secret。
+- `ADMIN_PASSWORD` 是**機密**，不放在參數裡：一鍵部署時填，或用 `VAULT_ADMIN_PASSWORD` Secret。它同時是**備用鑰匙**：就算在打包器裡把管理員密碼改掉了，部署時填的這組仍然能登入（要讓它失效，請到 Cloudflare 的 Worker 設定改掉或刪除這個機密）。忘記或被人改掉打包器裡的新密碼時，用它登入再重設即可。
 - 填錯會直接說明：JSON 壞了、參數名稱打錯、型別不對都會被攔下或回到預設值，不會做出壞掉的網站。
 - 參數寫進網頁後就是公開內容（只有名稱、連結、預設值），不要放機密。
 

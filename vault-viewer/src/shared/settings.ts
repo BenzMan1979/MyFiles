@@ -10,6 +10,8 @@ export interface AppSettings {
   workerName: string;
   /** folder of the repo that holds this project; shown as the "root directory" when connecting a repo to Cloudflare */
   projectDir: string;
+  /** when the packer is opened from a vault server, add that server to the list by itself */
+  autoAddServer: boolean;
   links: {
     /** repo folder that Cloudflare's one-click deploy copies; empty hides the deploy button */
     deployRepo: string;
@@ -48,6 +50,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   appName: '隨身密閱',
   workerName: 'vault-viewer',
   projectDir: 'vault-viewer',
+  autoAddServer: true,
   links: {
     deployRepo: '',
     deployButtonBase: 'https://deploy.workers.cloudflare.com/?url=',
@@ -99,6 +102,7 @@ export function resolveSettings(raw: unknown): AppSettings {
     appName: str(r.appName, d.appName, 40) || d.appName,
     workerName: str(r.workerName, d.workerName, 63) || d.workerName,
     projectDir: str(r.projectDir, d.projectDir, 100).replace(/^\/+|\/+$/g, '') || d.projectDir,
+    autoAddServer: bool(r.autoAddServer, d.autoAddServer),
     links: {
       deployRepo: url(l.deployRepo, d.links.deployRepo),
       deployButtonBase: url(l.deployButtonBase, d.links.deployButtonBase),

@@ -364,7 +364,9 @@ export class Hub {
 
   private async verifyPassword(password: string): Promise<boolean> {
     const stored = await this.store.get<{ salt: string; hash: string; iterations: number }>('admin:pw');
-    if (stored) return sameBytes(await pbkdf2(password, unb64(stored.salt), stored.iterations), unb64(stored.hash));
+    if (stored && sameBytes(await pbkdf2(password, unb64(stored.salt), stored.iterations), unb64(stored.hash))) return true;
+    // The password set when deploying (a Worker secret) always keeps working, even after the password
+    // was changed from the packer: it is the spare key if that new password is lost or misused.
     if (this.env.ADMIN_PASSWORD) return sameBytes(await sha256(password), await sha256(this.env.ADMIN_PASSWORD));
     return false;
   }

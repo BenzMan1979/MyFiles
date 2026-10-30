@@ -4,6 +4,7 @@
     "appName": "隨身密閱",
     "workerName": "vault-viewer",
     "projectDir": "vault-viewer",
+    "autoAddServer": true,
     "links": {
       "deployButtonBase": "https://deploy.workers.cloudflare.com/?url=",
       "cloudflareSignup": "https://dash.cloudflare.com/sign-up",

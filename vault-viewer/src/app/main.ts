@@ -2,6 +2,9 @@ import './style.css';
 import { APP_NAME } from '../shared/config';
 import { clear, h } from '../shared/dom';
 import { hasUnsavedResult, renderCreate } from './createPage';
+import { randomId } from '../core/keytext';
+import { settings } from '../shared/settings';
+import { serverInfo, servers } from './api';
 import { renderHelp } from './helpPage';
 import { renderHome } from './homePage';
 import { renderManage } from './managePage';
@@ -45,3 +48,16 @@ window.addEventListener('beforeunload', (e) => {
   if (hasUnsavedResult()) e.preventDefault();
 });
 render();
+
+// Opened from a vault server itself (say, on a new computer)? Then it is already "my server": add it,
+// so that only the admin login is left to do. Nothing secret is stored, just its name and address.
+if (settings.autoAddServer && location.protocol.startsWith('http') && servers.autoAddAllowed() && !servers.list().some((s) => s.url === location.origin)) {
+  serverInfo(location.origin)
+    .then((info) => {
+      // A server that has no admin password yet goes through the setup card on the servers page instead.
+      if (!info.adminConfigured) return;
+      servers.upsert({ id: randomId(6), name: '我的伺服器', url: location.origin });
+      render();
+    })
+    .catch(() => {});
+}

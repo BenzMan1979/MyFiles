@@ -19,6 +19,9 @@ describe('app settings', () => {
     expect(s.workerName).toBe('vault-viewer');
     expect(s.projectDir).toBe('vault-viewer');
     expect(resolveSettings({ projectDir: '/apps/vault/' }).projectDir).toBe('apps/vault');
+    expect(s.autoAddServer).toBe(true);
+    expect(resolveSettings({ autoAddServer: false }).autoAddServer).toBe(false);
+    expect(resolveSettings({ autoAddServer: 'no' }).autoAddServer).toBe(true);
   });
   it('rejects wrong types and clamps numbers instead of breaking the page', () => {
     const s = resolveSettings({ appName: 42, limits: { maxRecipients: 99999, minPasswordLength: -3 }, defaults: { maxFailures: 'x', watermark: { density: 99, opacity: 5 } }, links: { cloudflareSignup: 'javascript:alert(1)', deployRepo: 'ftp://x' } });
