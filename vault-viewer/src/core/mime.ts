@@ -25,7 +25,7 @@ export function guessMime(path: string, browserType = ''): string {
   return EXT[extOf(path)] ?? (browserType || 'application/octet-stream');
 }
 
-export type FileKind = 'pdf' | 'image' | 'video' | 'audio' | 'markdown' | 'html' | 'text' | 'docx' | 'xlsx' | 'slides' | 'other';
+export type FileKind = 'pdf' | 'image' | 'video' | 'audio' | 'markdown' | 'html' | 'text' | 'docx' | 'xlsx' | 'slides' | 'legacy' | 'other';
 
 export function kindOf(path: string, mime: string): FileKind {
   const ext = extOf(path);
@@ -37,7 +37,8 @@ export function kindOf(path: string, mime: string): FileKind {
   if (mime === 'text/html') return 'html';
   if (mime.startsWith('text/') || mime === 'application/json' || mime === 'application/xml') return 'text';
   if (ext === 'docx') return 'docx';
-  if (ext === 'xlsx' || ext === 'xls') return 'xlsx';
+  if (ext === 'xlsx' || ext === 'xlsm') return 'xlsx';
+  if (ext === 'doc' || ext === 'xls') return 'legacy';
   if (ext === 'pptx' || ext === 'ppt') return 'slides';
   return 'other';
 }

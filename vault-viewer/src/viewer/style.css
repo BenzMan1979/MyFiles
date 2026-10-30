@@ -68,3 +68,19 @@ pre.code { margin: 0; white-space: pre-wrap; word-break: break-word; font: 13.5p
   .pdf-bar { top: -12px; margin: -12px -12px 12px; }
   .doc { padding: 18px; }
 }
+
+/* Word and Excel previews */
+.docx-view { overflow-x: auto; }
+.docx-view .docx-wrapper { background: transparent !important; padding: 0 !important; align-items: center; }
+.docx-view .docx-wrapper > section.docx { box-shadow: var(--shadow); margin-bottom: 16px !important; max-width: 100%; }
+.docx-view { color: #000; }
+.xlsx-view { display: flex; flex-direction: column; height: calc(100vh - 150px); min-height: 320px; }
+.sheet-grid { flex: 1; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.sheet-tabs { display: flex; gap: 6px; padding: 8px 0 0; overflow-x: auto; }
+.sheet-tabs .btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+table.sheet { border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+table.sheet th, table.sheet td { border: 1px solid var(--border); padding: 2px 8px; white-space: pre-wrap; vertical-align: top; max-width: 360px; }
+table.sheet th { background: var(--surface-2); color: var(--muted); font-weight: 500; position: sticky; top: 0; z-index: 1; }
+table.sheet th.rowhead { left: 0; z-index: 2; text-align: right; }
+table.sheet th.corner { left: 0; z-index: 3; }
+table.sheet td.num { text-align: right; }

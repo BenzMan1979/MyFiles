@@ -6,7 +6,7 @@ import type { Browser, Page } from 'playwright';
 import { randomBytes, toB64 } from '../../src/core/bytes';
 import { keyToText } from '../../src/core/keytext';
 import { buildVault, renderVaultHtml, DEFAULT_POLICY, DEFAULT_PROTECTION, type BuildOptions } from '../../src/core/format';
-import { sampleFiles, startHub } from './fixtures';
+import { officeFiles, sampleFiles, startHub } from './fixtures';
 
 const { chromium } = createRequire(import.meta.url)('playwright') as typeof import('playwright');
 const OUT = process.env.E2E_OUT ?? join(process.cwd(), 'test-results');
@@ -26,13 +26,13 @@ afterAll(async () => {
   hub?.server.close();
 });
 
-async function makeVault(name: string, over: Partial<BuildOptions>) {
+async function makeVault(name: string, over: Partial<BuildOptions>, files = sampleFiles()) {
   const keyfile = randomBytes(32);
   const o: BuildOptions = {
     title: '測試封存', recipient: '王小明', batchId: 'b1', mode: 'offline', server: null,
     policy: DEFAULT_POLICY, protection: DEFAULT_PROTECTION, password: 'abcd-efgh-jkmn', keyfile, serverShare: null, kdf: FAST_KDF, ...over,
   };
-  const v = await buildVault(sampleFiles(), o);
+  const v = await buildVault(files, o);
   const path = join(OUT, `${name}.vault.html`);
   writeFileSync(path, renderVaultHtml(TEMPLATE, v.header, v.blobParts).join(''));
   return { path, key: keyToText(keyfile), v, o };
@@ -116,6 +116,54 @@ describe('viewer (offline)', () => {
     await p3.waitForSelector('.error:has-text("已鎖定")');
     await expect(p3.locator('button[type=submit]').isDisabled()).resolves.toBe(true);
     await ctx.close();
+  });
+});
+
+describe('Word and Excel previews', () => {
+  it('shows a Word document, neutralises hostile links, and keeps allowed behaviour', async () => {
+    const { path, key } = await makeVault('office', {}, officeFiles());
+    const page = await openPage(path);
+    await unlock(page, 'abcd-efgh-jkmn', key);
+    await page.waitForSelector('.tree');
+
+    await page.click('.file:has-text("合約.docx")');
+    await page.waitForSelector('.docx-view section.docx', { timeout: 20_000 });
+    const text = await page.locator('.docx-view').innerText();
+    expect(text).toContain('合約標題');
+    expect(text).toContain('docx-secret');
+    expect(text).toContain('甲方');
+    expect(await page.locator('.docx-view table').count()).toBeGreaterThan(0);
+    expect(await page.locator('.docx-view a[href^="https://example.com"][rel~="noopener"]').count()).toBe(1);
+    expect(await page.locator('.docx-view a[href^="javascript"]').count()).toBe(0);
+    expect(await page.locator('.docx-view a:has-text("壞連結")[href]').count()).toBe(0);
+    await page.screenshot({ path: join(OUT, 'preview-docx.png') });
+
+    await page.click('.file:has-text("報表.xlsx")');
+    await page.waitForSelector('table.sheet');
+    const tabs = await page.locator('.sheet-tabs button').allTextContents();
+    expect(tabs).toEqual(['摘要', '明細']); // the hidden sheet is not offered
+    const cells = await page.locator('table.sheet td').allTextContents();
+    expect(cells).toContain('合計 xlsx-secret'); // rich text runs joined
+    expect(cells).toContain('1,234.50'); // #,##0.00
+    expect(cells).toContain('2026-10-30'); // built-in date
+    expect(cells).toContain('12.5%'); // custom percent
+    expect(cells).toContain('2026年10月30日'); // custom Chinese date
+    expect(cells).toContain('TRUE');
+    expect(cells).toContain('內嵌文字');
+    expect(cells).toContain('#DIV/0!');
+    expect(await page.locator('table.sheet td[colspan="3"]').textContent()).toBe('跨欄的標題');
+    expect(await page.locator('table.sheet td.num').count()).toBeGreaterThanOrEqual(4);
+    await page.screenshot({ path: join(OUT, 'preview-xlsx.png') });
+    await page.click('.sheet-tabs button:has-text("明細")');
+    await page.waitForSelector('table.sheet td:has-text("明細頁內容")');
+    expect(await page.locator('table.sheet').innerText()).not.toContain('不該看到');
+    // column letters and row numbers like a spreadsheet
+    expect(await page.locator('table.sheet thead th').allTextContents()).toEqual(['', 'A', 'B']);
+
+    await page.click('.file:has-text("舊檔.xls")');
+    await page.waitForSelector('text=舊版 Office 格式');
+    expect((page as Page & { errors: string[] }).errors).toEqual([]);
+    await page.close();
   });
 });
 

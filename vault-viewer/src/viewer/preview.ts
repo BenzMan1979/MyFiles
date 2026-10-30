@@ -25,7 +25,7 @@ export function decodeText(data: Uint8Array): string {
 /** Kinds that are shown from the file's content; for the rest nothing needs decrypting until download. */
 export function usesContent(entry: FileEntry): boolean {
   const kind = kindOf(entry.path, entry.mime);
-  return kind !== 'other' && kind !== 'slides';
+  return kind !== 'other' && kind !== 'slides' && kind !== 'legacy';
 }
 
 export interface PreviewContext {
@@ -76,6 +76,32 @@ export async function renderPreview(box: HTMLElement, entry: FileEntry, data: Ui
         revoke();
       };
     }
+    case 'docx': {
+      const { renderDocx } = await import('./docx');
+      const dispose = await renderDocx(box, data);
+      return () => {
+        dispose();
+        revoke();
+      };
+    }
+    case 'xlsx': {
+      const { renderXlsx } = await import('./xlsx');
+      const dispose = await renderXlsx(box, data);
+      return () => {
+        dispose();
+        revoke();
+      };
+    }
+    case 'legacy':
+      box.append(
+        h('div', { class: 'empty' },
+          h('div', { class: 'big-icon' }, '📄'),
+          h('p', null, '舊版 Office 格式（.doc／.xls）無法預覽。'),
+          h('p', { class: 'muted' }, '請發送者另存成 .docx／.xlsx 或 PDF 後重新打包。'),
+          ctx.allowDownload ? h('button', { class: 'btn', onclick: ctx.download }, '下載原檔') : null,
+        ),
+      );
+      return revoke;
     case 'markdown': {
       const html = await marked.parse(decodeText(data), { gfm: true, breaks: false });
       box.append(h('article', { class: 'doc' }, sanitizeHtml(html)));
@@ -106,8 +132,8 @@ export async function renderPreview(box: HTMLElement, entry: FileEntry, data: Ui
     default:
       box.append(
         h('div', { class: 'empty' },
-          h('div', { class: 'big-icon' }, kind === 'docx' || kind === 'xlsx' ? '📄' : '📦'),
-          h('p', null, kind === 'docx' || kind === 'xlsx' ? 'Word／Excel 預覽將在下一版加入。' : '這個檔案類型無法預覽。'),
+          h('div', { class: 'big-icon' }, '📦'),
+          h('p', null, '這個檔案類型無法預覽。'),
           h('p', { class: 'muted' }, `${entry.path.split('/').pop()} · ${formatSize(entry.size)}`),
           ctx.allowDownload ? h('button', { class: 'btn', onclick: ctx.download }, '下載原檔') : h('p', { class: 'muted' }, '發送者沒有開放下載原檔。'),
         ),
@@ -125,7 +151,8 @@ export function iconFor(entry: FileEntry): string {
     case 'markdown':
     case 'text': return '📝';
     case 'html': return '🌐';
-    case 'docx': return '📘';
+    case 'docx':
+    case 'legacy': return '📘';
     case 'xlsx': return '📗';
     case 'slides': return '📙';
     default: return '📄';

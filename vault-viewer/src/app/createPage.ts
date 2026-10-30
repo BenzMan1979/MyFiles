@@ -145,8 +145,9 @@ function expiresAt(): string | null {
 function fileWarning(path: string): string | null {
   const ext = extOf(path);
   if (ext === 'pptx' || ext === 'ppt') return '簡報無法直接預覽：請先用 PowerPoint「檔案 → 匯出 → 建立 PDF」，再加入 PDF。';
-  if (ext === 'doc' || ext === 'xls') return '舊版 Office 格式無法預覽，建議另存為 PDF。';
-  if (ext === 'docx' || ext === 'xlsx') return 'Word／Excel 預覽將在下一版加入；版面重要的話建議另存為 PDF。';
+  if (ext === 'doc' || ext === 'xls') return '舊版 Office 格式（.doc／.xls）無法預覽，請另存成 .docx／.xlsx 或 PDF。';
+  if (ext === 'docx') return 'Word 可以預覽，但版面可能和 Word 裡略有差異；版面要求高的話建議另存為 PDF。';
+  if (ext === 'xlsx' || ext === 'xlsm') return 'Excel 只顯示儲存時的計算結果（不含公式、圖表和圖片）；需要完整呈現請另存為 PDF。';
   if (['mov', 'avi', 'wmv', 'mkv', 'flv'].includes(ext)) return '這個影片格式瀏覽器可能無法播放，建議轉成 MP4（H.264）。';
   if (kindOf(path, guessMime(path)) === 'other') return '這個類型無法預覽，只能在允許下載時下載原檔。';
   return null;

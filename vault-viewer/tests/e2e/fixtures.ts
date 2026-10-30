@@ -1,5 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import { Hub, MemoryStore } from '../../server/src/hub';
+import { zipSync } from 'fflate';
 import { utf8 } from '../../src/core/bytes';
 import type { InputFile } from '../../src/core/format';
 
@@ -31,6 +32,56 @@ export function minimalPdf(): Uint8Array {
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
 
 const file = (path: string, data: Uint8Array, mime: string): InputFile => ({ path, mime, size: data.length, read: async () => data });
+
+const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const zip = (files: Record<string, string>) => zipSync(Object.fromEntries(Object.entries(files).map(([k, v]) => [k, utf8(v)])));
+
+/** A one-page Word file: bold title, text, a good and a hostile link, and a 2-cell table. */
+export function minimalDocx(): Uint8Array {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="' + REL + '"';
+  return zip({
+    '[Content_Types].xml': XML + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+    '_rels/.rels': XML + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="word/document.xml"/></Relationships>`,
+    'word/_rels/document.xml.rels': XML + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId10" Type="${REL}/hyperlink" Target="javascript:alert(1)" TargetMode="External"/><Relationship Id="rId11" Type="${REL}/hyperlink" Target="https://example.com/" TargetMode="External"/></Relationships>`,
+    'word/document.xml': XML + `<w:document ${W}><w:body>` +
+      '<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>合約標題</w:t></w:r></w:p>' +
+      '<w:p><w:r><w:t>第一段內容 docx-secret</w:t></w:r></w:p>' +
+      '<w:p><w:hyperlink r:id="rId10"><w:r><w:t>壞連結</w:t></w:r></w:hyperlink><w:r><w:t xml:space="preserve"> </w:t></w:r><w:hyperlink r:id="rId11"><w:r><w:t>好連結</w:t></w:r></w:hyperlink></w:p>' +
+      '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="2000"/></w:tblGrid><w:tr><w:tc><w:p><w:r><w:t>甲方</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>乙方</w:t></w:r></w:p></w:tc></w:tr></w:tbl>' +
+      '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>',
+  });
+}
+
+/** Two visible sheets and one hidden: numbers with several formats, dates, a merged cell. */
+export function minimalXlsx(): Uint8Array {
+  const NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+  return zip({
+    '[Content_Types].xml': XML + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>',
+    '_rels/.rels': XML + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    'xl/workbook.xml': XML + `<workbook ${NS} xmlns:r="${REL}"><sheets><sheet name="摘要" sheetId="1" r:id="rId1"/><sheet name="明細" sheetId="2" r:id="rId2"/><sheet name="隱藏" sheetId="3" state="hidden" r:id="rId3"/></sheets></workbook>`,
+    'xl/_rels/workbook.xml.rels': XML + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${REL}/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="${REL}/worksheet" Target="worksheets/sheet3.xml"/></Relationships>`,
+    'xl/styles.xml': XML + `<styleSheet ${NS}><numFmts count="2"><numFmt numFmtId="164" formatCode="yyyy&quot;年&quot;m&quot;月&quot;d&quot;日&quot;"/><numFmt numFmtId="165" formatCode="0.0%"/></numFmts><cellXfs count="5"><xf numFmtId="0"/><xf numFmtId="14"/><xf numFmtId="165"/><xf numFmtId="164"/><xf numFmtId="4"/></cellXfs></styleSheet>`,
+    'xl/sharedStrings.xml': XML + `<sst ${NS}><si><t>品項</t></si><si><t>金額</t></si><si><t>日期</t></si><si><r><t>合計</t></r><r><t> xlsx-secret</t></r></si><si><t>占比</t></si><si><t>跨欄的標題</t></si></sst>`,
+    'xl/worksheets/sheet1.xml': XML + `<worksheet ${NS}><cols><col min="1" max="1" width="18"/></cols><sheetData>` +
+      '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1" t="s"><v>2</v></c></row>' +
+      '<row r="2"><c r="A2" t="s"><v>3</v></c><c r="B2" s="4"><v>1234.5</v></c><c r="C2" s="1"><v>46325</v></c></row>' +
+      '<row r="3"><c r="A3" t="s"><v>4</v></c><c r="B3" s="2"><v>0.125</v></c><c r="C3" s="3"><v>46325</v></c></row>' +
+      '<row r="4"><c r="A4" t="b"><v>1</v></c><c r="B4" t="inlineStr"><is><t>內嵌文字</t></is></c><c r="C4" t="e"><v>#DIV/0!</v></c></row>' +
+      '<row r="5"><c r="A5" t="s"><v>5</v></c></row>' +
+      '</sheetData><mergeCells count="1"><mergeCell ref="A5:C5"/></mergeCells></worksheet>',
+    'xl/worksheets/sheet2.xml': XML + `<worksheet ${NS}><sheetData><row r="1"><c r="B1" t="inlineStr"><is><t>明細頁內容</t></is></c></row><row r="2"><c r="B2" t="inlineStr"><is><t>第二頁</t></is></c></row></sheetData></worksheet>`,
+    'xl/worksheets/sheet3.xml': XML + `<worksheet ${NS}><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>不該看到</t></is></c></row></sheetData></worksheet>`,
+  });
+}
+
+const MIME_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const MIME_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+export const officeFiles = (): InputFile[] => [
+  file('文件/合約.docx', minimalDocx(), MIME_DOCX),
+  file('文件/報表.xlsx', minimalXlsx(), MIME_XLSX),
+  file('文件/舊檔.xls', utf8('not really a legacy file'), 'application/vnd.ms-excel'),
+];
 
 export function sampleFiles(): InputFile[] {
   return [
