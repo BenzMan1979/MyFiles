@@ -17,6 +17,8 @@ describe('app settings', () => {
     expect(s.defaults.expiryDays).toBeNull();
     expect(s.defaults.watermark).toEqual({ ...DEFAULT_SETTINGS.defaults.watermark, text: '{收件人}', size: 24 });
     expect(s.workerName).toBe('vault-viewer');
+    expect(s.projectDir).toBe('vault-viewer');
+    expect(resolveSettings({ projectDir: '/apps/vault/' }).projectDir).toBe('apps/vault');
   });
   it('rejects wrong types and clamps numbers instead of breaking the page', () => {
     const s = resolveSettings({ appName: 42, limits: { maxRecipients: 99999, minPasswordLength: -3 }, defaults: { maxFailures: 'x', watermark: { density: 99, opacity: 5 } }, links: { cloudflareSignup: 'javascript:alert(1)', deployRepo: 'ftp://x' } });
@@ -40,6 +42,10 @@ describe('build-time settings', () => {
     expect(r.app).toEqual({ appName: 'X', links: { deployRepo: 'https://github.com/someone/fork/tree/main/vault-viewer' } });
     expect(r.server).toEqual({ ADMIN_SESSION_HOURS: 4 });
     expect(r.worker).toEqual({ name: 'w' });
+  });
+  it('builds the deploy link from the configured project folder', () => {
+    const env = { GITHUB_REPOSITORY: 'a/b', GITHUB_REF_TYPE: 'branch', GITHUB_REF_NAME: 'main', VAULT_SETTINGS: '{"app":{"projectDir":"apps/vault"}}' };
+    expect(readSettings(env, '/n').app.links.deployRepo).toBe('https://github.com/a/b/tree/main/apps/vault');
   });
   it('lets an explicit link win, including an empty one that turns the button off', () => {
     const env = { GITHUB_REPOSITORY: 'a/b', GITHUB_REF_TYPE: 'branch', GITHUB_REF_NAME: 'main' };

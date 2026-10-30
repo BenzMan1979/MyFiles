@@ -19,10 +19,20 @@
 3. 照畫面登入、連結 GitHub，看到 **`ADMIN_PASSWORD`** 時填入你的管理員密碼（至少 8 個字元），按部署。
 4. 部署完成後打開畫面上的 `https://….workers.dev` 網址，左邊選「伺服器設定」，輸入管理員密碼登入就完成了。
 
-> 這個 repo 必須是**公開**的，按鈕才讀得到。網址若有變動，只要改上面那個按鈕連結（`url=` 後面）。
+> 這個方法的 repo 必須是**公開**的，按鈕才讀得到；不想公開請用方法二或三。網址若有變動，只要改上面那個按鈕連結（`url=` 後面）。
 > 程式裡的連結不用改：打包器裡的「部署到 Cloudflare」按鈕是建置時依正在建置的 repo 自動產生的。
 
-### 方法二：用 GitHub Actions 部署（私有 repo、fork 都可以，不公開任何東西）
+### 方法二：Cloudflare 直接連 Git（私有 repo 可用，不用打指令）
+
+一鍵部署按鈕需要公開的 repo；私有 repo 改由 Cloudflare 直接讀取：
+
+1. 在 Cloudflare 主控台：Workers 和 Pages →「建立」→「匯入 Git 儲存庫」。
+2. 連結 GitHub，授權 Cloudflare 讀取這個 repo（私有也可以，要有存取權）。
+3. 專案名稱填 `vault-viewer`，**根目錄**填 `vault-viewer`，**建置指令**填 `npm run build`，**部署指令**填 `npx wrangler deploy`。
+4. 在「變數」加上 `ADMIN_PASSWORD`（管理員密碼，類型選機密）；想改設定就再加 `VAULT_SETTINGS`（JSON，見下面「參數」）。
+5. 部署，完成後打開 `https://….workers.dev` 登入即可。
+
+### 方法三：用 GitHub Actions 部署（私有 repo、fork 都可以，不公開任何東西）
 
 1. Fork 或複製這個 repo（可以設成私有）。
 2. 在 Cloudflare 建立 API Token（權限：帳戶 → Workers 指令碼 → 編輯；帳戶 → 帳戶設定 → 讀取），並記下 Account ID。
@@ -31,7 +41,7 @@
    - **Variables**（選填）：`VAULT_SETTINGS`，內容是下面「參數」的 JSON。
 4. 到 Actions 頁籤執行「Deploy to Cloudflare」，之後推送到 `main` 也會自動部署。
 
-### 方法三：自己的電腦
+### 方法四：自己的電腦
 
 ```bash
 cd vault-viewer
@@ -50,6 +60,7 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
   "app": {                       // 寫進打包器與每份封存檔的檢視器（建置時）
     "appName": "隨身密閱",        // 產品名稱
     "workerName": "vault-viewer", // 只用在說明文字裡的範例網址
+    "projectDir": "vault-viewer", // 專案在 repo 裡的資料夾（說明文字與部署連結用）
     "links": {
       "deployRepo": "…",          // 一鍵部署要複製的 repo 資料夾；不寫＝自動指向正在建置的 repo；""＝隱藏按鈕
       "deployButtonBase": "https://deploy.workers.cloudflare.com/?url=",

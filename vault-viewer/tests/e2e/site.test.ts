@@ -94,7 +94,7 @@ describe('deployer settings baked into the built pages', () => {
 
   it('uses the configured name, links, limits and defaults', async () => {
     const url = withSettings('custom', {
-      appName: '我的密閱', workerName: 'mine',
+      appName: '我的密閱', workerName: 'mine', projectDir: 'apps/vault',
       links: { deployRepo: 'https://github.com/x/y/tree/main/vault-viewer', cloudflareSignup: 'https://example.com/signup' },
       limits: { maxTotalMB: 1, minPasswordLength: 10 },
       defaults: { expiryDays: null, maxFailures: 3, watermark: { text: '{收件人} 機密', size: 30, density: 5 } },
@@ -105,6 +105,9 @@ describe('deployer settings baked into the built pages', () => {
     await expect(p.locator('a:has-text("部署到 Cloudflare")').getAttribute('href')).resolves.toBe('https://deploy.workers.cloudflare.com/?url=https://github.com/x/y/tree/main/vault-viewer');
     await expect(p.locator('a:has-text("開啟 Cloudflare 註冊頁")').getAttribute('href')).resolves.toBe('https://example.com/signup');
     await expect(p.locator('input[placeholder*="mine."]').count()).resolves.toBe(1);
+    // the private-repo route names the configured worker and folder
+    await p.click('summary:has-text("私有 repo")');
+    await expect(p.locator('details.more:has(summary:has-text("私有 repo")) code').allTextContents()).resolves.toEqual(expect.arrayContaining(['mine', 'apps/vault', 'npm run build', 'npx wrangler deploy', 'ADMIN_PASSWORD']));
 
     await p.click('.app-nav a:has-text("建立封存檔")');
     await p.setInputFiles('input[type=file][multiple]:not([webkitdirectory])', { name: 'big.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(2 * 1024 * 1024) });
@@ -126,6 +129,7 @@ describe('deployer settings baked into the built pages', () => {
     const p = await open(`${withSettings('plain', {})}#servers`);
     await expect(p.locator('a:has-text("部署到 Cloudflare")').count()).resolves.toBe(0);
     await expect(p.locator('.step:has-text("取得伺服器網址")').count()).resolves.toBe(1);
+    await expect(p.locator('.step:has-text("取得伺服器網址") summary:has-text("私有 repo")').count()).resolves.toBe(1);
     await expect(p.locator('.app-brand').textContent()).resolves.toContain('隨身密閱');
     await p.close();
   });

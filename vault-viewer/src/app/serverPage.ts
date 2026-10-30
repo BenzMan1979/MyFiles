@@ -170,6 +170,24 @@ async function passwordDialog(s: ServerProfile) {
   if (v === 'ok') toast('管理員密碼已更換，其他地方的登入都已登出');
 }
 
+/** Private repos cannot use the one-click button; Cloudflare can still build them once it is allowed to read the repo. */
+function gitConnectHelp() {
+  const code = (t: string) => h('code', null, t);
+  return h('details', { class: 'more' },
+    h('summary', null, '程式碼放在私有 repo？改用「連結 Git」部署'),
+    h('p', { class: 'muted small' }, '一鍵部署需要程式碼是公開的。私有 repo 可以讓 Cloudflare 直接讀取後自己建置，不用公開任何東西（畫面名稱可能依 Cloudflare 的版本略有不同）：'),
+    h('ol', { class: 'steps' },
+      h('li', null, '到 ', h('a', { href: settings.links.cloudflareDashboard, target: '_blank', rel: 'noopener' }, 'Cloudflare 主控台'), '，左側選「Workers 和 Pages」→「建立」→「匯入 Git 儲存庫（Import a repository）」。'),
+      h('li', null, '連結 GitHub，授權 Cloudflare 讀取這個 repo（私有的也可以，只要你的帳號有存取權）。'),
+      h('li', null, '專案名稱填 ', code(settings.workerName), '，「根目錄（Root directory）」填 ', code(settings.projectDir), '。'),
+      h('li', null, '建置指令填 ', code('npm run build'), '，部署指令填 ', code('npx wrangler deploy'), '。'),
+      h('li', null, '在「變數（Variables）」加上 ', code('ADMIN_PASSWORD'), '（你的管理員密碼，至少 8 個字元，類型選「密碼／機密」）。'),
+      h('li', null, '按部署，完成後複製畫面上的 ', code('https://….workers.dev'), ' 網址，回到下面第 3 步貼上。'),
+    ),
+    h('p', { class: 'hint' }, '想改名稱、限制或預設值：在同一個頁面的建置變數新增 ', code('VAULT_SETTINGS'), '（JSON，格式見專案說明的「參數」），重新部署就會生效。'),
+  );
+}
+
 /** The step-by-step setup guide. */
 function wizard(done: () => void) {
   const name = h('input', { class: 'input', placeholder: '例如：我的伺服器', value: '我的伺服器' });
@@ -219,6 +237,7 @@ function wizard(done: () => void) {
             h('li', null, '等 1～2 分鐘部署完成，複製畫面上 ', h('code', null, 'https://….workers.dev'), ' 的網址。這個網址同時也是你自己的打包器網頁。'),
           ),
           h('a', { class: 'btn primary', href: DEPLOY_BUTTON_URL, target: '_blank', rel: 'noopener' }, '☁️ 部署到 Cloudflare ↗'),
+          gitConnectHelp(),
           h('details', { class: 'more' },
             h('summary', null, '找不到網址？'),
             h('p', null, '到 Cloudflare 主控台左側選「Workers 和 Pages（Workers & Pages）」→ 點 ', h('code', null, settings.workerName), ' → 右上角「造訪（Visit）」旁邊的網址就是。'),
@@ -227,6 +246,7 @@ function wizard(done: () => void) {
         ])
       : step(2, '取得伺服器網址', [
           h('p', null, '這份打包器沒有設定一鍵部署的來源。請向提供這份打包器的人索取伺服器網址，直接到下一步貼上；或依專案說明自行部署一台。'),
+          gitConnectHelp(),
         ]),
     step(3, '連線並登入', [
       h('div', { class: 'field' }, h('label', { class: 'label' }, '幫這台伺服器取個名字'), name),

@@ -41,7 +41,7 @@ export function readSettings(env = process.env, cwd = '.') {
   if (app.links.deployRepo === undefined) {
     const fromCi =
       env.GITHUB_REPOSITORY && env.GITHUB_REF_TYPE === 'branch' && !env.GITHUB_HEAD_REF
-        ? `${env.GITHUB_SERVER_URL || 'https://github.com'}/${env.GITHUB_REPOSITORY}/tree/${env.GITHUB_REF_NAME}/${env.VAULT_PROJECT_DIR ?? 'vault-viewer'}`
+        ? `${env.GITHUB_SERVER_URL || 'https://github.com'}/${env.GITHUB_REPOSITORY}/tree/${env.GITHUB_REF_NAME}/${app.projectDir ?? env.VAULT_PROJECT_DIR ?? 'vault-viewer'}`
         : '';
     const repo = env.VAULT_DEPLOY_REPO ?? fromCi;
     if (repo) app.links.deployRepo = repo;
