@@ -44,17 +44,61 @@ export function watermarkText(p: Protection, c: WatermarkContext): string {
   return p.watermark.text.replace(/\{([^{}]+)\}/g, (all, k: string) => (k in values ? values[k] : all)).replace(/\s{3,}/g, '  ').trim();
 }
 
+export const WATERMARK_DEFAULTS = { size: 18, density: 3 };
+export const WATERMARK_SIZE_RANGE = { min: 10, max: 48 };
+export const DENSITY_LABELS = ['很疏', '疏', '標準', '密', '很密'];
+/** Space between marks, in multiples of the font size. */
+const DENSITY_GAP = [12, 7, 4, 2, 0.6];
+const ANGLE = (28 * Math.PI) / 180;
+
+export function watermarkStyle(w: { size?: number; density?: number }) {
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(v)));
+  return {
+    size: clamp(w.size ?? WATERMARK_DEFAULTS.size, WATERMARK_SIZE_RANGE.min, WATERMARK_SIZE_RANGE.max),
+    density: clamp(w.density ?? WATERMARK_DEFAULTS.density, 1, 5),
+  };
+}
+
+/** Real width when a canvas is available (the browser), a rough estimate otherwise (tests). */
+function textWidth(text: string, size: number): number {
+  if (typeof document !== 'undefined') {
+    const g = document.createElement('canvas').getContext('2d');
+    if (g) {
+      g.font = `600 ${size}px sans-serif`;
+      return g.measureText(text).width;
+    }
+  }
+  let em = 0;
+  for (const ch of text) {
+    const c = ch.codePointAt(0)!;
+    em += c >= 0x2e80 || (c >= 0xff00 && c <= 0xffef) ? 1 : ch === ' ' ? 0.3 : /[A-Z0-9]/.test(ch) ? 0.68 : 0.56;
+  }
+  return em * size;
+}
+
 /**
  * Dark text with a light outline, so it shows on any background. PDF pages, images and documents
  * are white even in dark mode, so a mark whose colour follows the theme would vanish on them.
+ *
+ * The tile is sized from the text and font size so a long text is never cut off. Marks are laid
+ * out like bricks: every other row is shifted by half a mark, drawn at both side edges so it wraps.
  */
-export function watermarkBackground(text: string, opacity: number): string {
+export function watermarkBackground(text: string, opacity: number, size = WATERMARK_DEFAULTS.size, density = WATERMARK_DEFAULTS.density): string {
+  const st = watermarkStyle({ size, density });
+  const w = textWidth(text, st.size) * 1.04 + 8;
+  const hgt = st.size * 1.4;
+  const bw = w * Math.cos(ANGLE) + hgt * Math.sin(ANGLE);
+  const bh = w * Math.sin(ANGLE) + hgt * Math.cos(ANGLE);
+  const gap = st.size * DENSITY_GAP[st.density - 1];
+  const cw = Math.ceil(bw + gap);
+  const ch = Math.ceil(bh + gap * 0.75);
   const esc = text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="360" height="220">` +
-    `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" transform="rotate(-28 180 110)" ` +
-    `font-family="sans-serif" font-size="18" font-weight="600" paint-order="stroke" stroke-linejoin="round" stroke-width="3" ` +
-    `fill="rgba(0,0,0,${opacity})" stroke="rgba(255,255,255,${opacity})">${esc}</text></svg>`;
+  const mark = (x: number, y: number) =>
+    `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-28 ${x} ${y})" ` +
+    `font-family="sans-serif" font-size="${st.size}" font-weight="600" paint-order="stroke" stroke-linejoin="round" stroke-width="${Math.max(2, st.size / 6)}" ` +
+    `fill="rgba(0,0,0,${opacity})" stroke="rgba(255,255,255,${opacity})">${esc}</text>`;
+  // one tile = a row with a mark in the middle, then a row shifted by half a cell (wraps around the sides)
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch * 2}">${mark(cw / 2, ch / 2)}${mark(0, ch * 1.5)}${mark(cw, ch * 1.5)}</svg>`;
   return `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}")`;
 }
 

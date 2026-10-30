@@ -282,7 +282,7 @@ function showMain(payload: Payload, opened: OpenedVault) {
 
   if (prot.watermark.enabled) {
     const text = watermarkText(prot, { recipient: manifest.recipient || '', note: manifest.note, openedAt, ip: opened.client?.ip, country: opened.client?.country, tag: opened.tag });
-    overlay.style.backgroundImage = watermarkBackground(text, Math.max(0.04, Math.min(0.5, prot.watermark.opacity)));
+    overlay.style.backgroundImage = watermarkBackground(text, Math.max(0.04, Math.min(0.5, prot.watermark.opacity)), prot.watermark.size, prot.watermark.density);
     // Deterrent: if the mark is removed or hidden (for example from developer tools), lock again.
     const watch = setInterval(() => {
       const cs = getComputedStyle(overlay);

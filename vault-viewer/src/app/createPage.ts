@@ -4,7 +4,7 @@ import { buildVault, DEFAULT_POLICY, DEFAULT_PROTECTION, renderVaultHtml, type I
 import { generatePassword, keyFileContent, keyToText, randomId } from '../core/keytext';
 import { extOf, formatSize, guessMime, kindOf } from '../core/mime';
 import { formatDateTime, h, saveBlob } from '../shared/dom';
-import { describeDevice, watermarkBackground, watermarkText } from '../viewer/protect';
+import { DENSITY_LABELS, describeDevice, watermarkBackground, watermarkStyle, watermarkText, WATERMARK_SIZE_RANGE } from '../viewer/protect';
 import { api, servers, tokens } from './api';
 import { decodeCsv, MAX_RECIPIENTS, MIN_PASSWORD, parseRecipients, templateCsv } from './csv';
 import { canPickFolder, downloadKeyCard, downloadSheet, downloadZip, safeName, saveToFolder, type BatchOutput } from './output';
@@ -330,7 +330,7 @@ function stepProtection(body: HTMLElement, rerender: () => void) {
   });
   const preview = h('div', { class: 'wm-preview' }, h('div', { class: 'wm-doc' }, h('p', null, '文件內容預覽'), h('p', { class: 'muted' }, '浮水印會斜斜地重複蓋在內容上方。')));
   const paint = () => {
-    preview.style.backgroundImage = pr.watermark.enabled ? watermarkBackground(watermarkText(pr, sample()), pr.watermark.opacity) : 'none';
+    preview.style.backgroundImage = pr.watermark.enabled ? watermarkBackground(watermarkText(pr, sample()), pr.watermark.opacity, pr.watermark.size, pr.watermark.density) : 'none';
   };
   wmText.addEventListener('input', () => {
     pr.watermark.text = wmText.value;
@@ -339,6 +339,21 @@ function stepProtection(body: HTMLElement, rerender: () => void) {
   const opacity = h('input', { type: 'range', min: 4, max: 40, value: Math.round(pr.watermark.opacity * 100) });
   opacity.addEventListener('input', () => {
     pr.watermark.opacity = Number(opacity.value) / 100;
+    paint();
+  });
+  const wm = watermarkStyle(pr.watermark);
+  const sizeLabel = h('span', { class: 'range-value' }, `${wm.size} px`);
+  const sizeInput = h('input', { type: 'range', 'data-wm': 'size', min: WATERMARK_SIZE_RANGE.min, max: 40, value: wm.size });
+  sizeInput.addEventListener('input', () => {
+    pr.watermark.size = Number(sizeInput.value);
+    sizeLabel.textContent = `${pr.watermark.size} px`;
+    paint();
+  });
+  const densityLabel = h('span', { class: 'range-value' }, DENSITY_LABELS[wm.density - 1]);
+  const densityInput = h('input', { type: 'range', 'data-wm': 'density', min: 1, max: 5, step: 1, value: wm.density });
+  densityInput.addEventListener('input', () => {
+    pr.watermark.density = Number(densityInput.value);
+    densityLabel.textContent = DENSITY_LABELS[pr.watermark.density - 1];
     paint();
   });
   const token = (t: string) => h('button', { type: 'button', class: 'btn small', onclick: () => { wmText.value += t; pr.watermark.text = wmText.value; paint(); } }, `＋${t}`);
@@ -369,6 +384,8 @@ function stepProtection(body: HTMLElement, rerender: () => void) {
               h('p', null, h('strong', null, '{裝置}'), '：只能顯示瀏覽器和作業系統（例如 Chrome 130 / Windows）。網頁沒有任何方法讀到電腦名稱或硬體資訊。'),
               h('p', null, h('strong', null, '{備註}'), '：想標示電腦名稱的話，可以在上一步的收件人「備註」填入發放給對方的電腦名稱或部門。')),
             field('濃淡', opacity),
+            field('字型大小', h('div', { class: 'range-row' }, sizeInput, sizeLabel), '字越大越醒目，但也越遮住內容。'),
+            field('密集程度', h('div', { class: 'range-row' }, densityInput, densityLabel), '越密越難被裁掉或遮住，截圖時也越難只留下乾淨的一塊；但會更干擾閱讀。'),
             preview)
         : null,
     ),

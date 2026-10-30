@@ -164,6 +164,57 @@ describe('watermark visibility', () => {
   }
 });
 
+describe('watermark size and density', () => {
+  const LONG = '王小明  203.0.113.8  A7K2Q9  2026/10/30 08:05  Chrome 130 / Windows';
+  type Metrics = { w: number; h: number; coverage: number; edge: number; markHeight: number };
+
+  async function measure(name: string, text: string, size: number | undefined, density: number | undefined): Promise<Metrics> {
+    const { path, key } = await makeVault(name, { protection: { ...DEFAULT_PROTECTION, watermark: { enabled: true, text, opacity: 0.3, size, density } } });
+    const page = await openPage(path);
+    await unlock(page, 'abcd-efgh-jkmn', key);
+    await page.waitForSelector('.tree');
+    const bg = await page.locator('.watermark').evaluate((el) => getComputedStyle(el).backgroundImage);
+    const m = await page.evaluate(async (css) => {
+      const img = new Image();
+      await new Promise((ok, bad) => { img.onload = ok; img.onerror = bad; img.src = css.slice(5, -2); });
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      const g = c.getContext('2d')!;
+      g.drawImage(img, 0, 0);
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      const at = (x: number, y: number) => d[(y * c.width + x) * 4 + 3];
+      let ink = 0, edge = 0, top = c.height, bottom = 0;
+      for (let y = 0; y < c.height; y++) {
+        for (let x = 0; x < c.width; x++) {
+          if (at(x, y) > 20) {
+            ink++;
+            if (y < top) top = y;
+            if (y > bottom) bottom = y;
+          }
+          // marks wrap around the left/right edges by design; top and bottom must stay clear
+          if ((y === 0 || y === c.height - 1) && at(x, y) > 8) edge++;
+        }
+      }
+      return { w: c.width, h: c.height, coverage: ink / (c.width * c.height), edge, markHeight: bottom - top };
+    }, bg);
+    await page.close();
+    return m;
+  }
+
+  it('never cuts a mark off at the top or bottom of the tile, and responds to size and density', async () => {
+    const base = await measure('wm-base', LONG, undefined, undefined); // a vault from before these settings
+    const sparse = await measure('wm-sparse', LONG, 18, 1);
+    const dense = await measure('wm-dense', LONG, 18, 5);
+    const small = await measure('wm-small', LONG, 12, 3);
+    const big = await measure('wm-big', LONG, 40, 3);
+    for (const m of [base, sparse, dense, small, big]) expect(m.edge).toBe(0);
+    expect(dense.coverage).toBeGreaterThan(sparse.coverage * 1.6);
+    expect(big.markHeight).toBeGreaterThan(small.markHeight);
+    expect(big.w).toBeGreaterThan(small.w);
+    expect(base.w).toBeGreaterThan(0);
+  });
+});
+
 describe('watermark tamper guard', () => {
   it('locks the vault again when the watermark is removed', async () => {
     const { path, key } = await makeVault('wm-tamper', {});

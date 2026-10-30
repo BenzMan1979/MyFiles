@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decodeCsv, parseCsv, parseRecipients, templateCsv } from '../src/app/csv';
-import { describeDevice, watermarkText, type WatermarkContext } from '../src/viewer/protect';
+import { describeDevice, watermarkBackground, watermarkStyle, watermarkText, type WatermarkContext } from '../src/viewer/protect';
 import { DEFAULT_PROTECTION } from '../src/core/format';
 
 describe('csv', () => {
@@ -56,5 +56,38 @@ describe('watermark text', () => {
   it('describes the browser and OS only', () => {
     expect(describeDevice('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0')).toBe('Edge 130 / Windows');
     expect(describeDevice('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1')).toBe('Safari 17 / iOS');
+  });
+});
+
+describe('watermark tile', () => {
+  const tile = (text: string, size: number, density: number) => {
+    const svg = decodeURIComponent(watermarkBackground(text, 0.2, size, density).slice(5, -2).replace('data:image/svg+xml;charset=utf-8,', ''));
+    const [, w, h] = svg.match(/width="(\d+)" height="(\d+)"/)!.map(Number);
+    return { w, h, marks: (svg.match(/<text /g) ?? []).length, svg };
+  };
+  it('grows with the text, so a long text is not cut off', () => {
+    expect(tile('王小明  203.0.113.8  A7K2Q9  2026/10/30 08:05', 18, 3).w).toBeGreaterThan(tile('王小明', 18, 3).w);
+  });
+  it('is bigger for larger fonts and smaller for denser settings', () => {
+    const t = '王小明 2026/10/30';
+    expect(tile(t, 30, 3).w).toBeGreaterThan(tile(t, 14, 3).w);
+    const widths = [1, 2, 3, 4, 5].map((d) => tile(t, 18, d).w * tile(t, 18, d).h);
+    expect(widths).toEqual([...widths].sort((a, b) => b - a));
+    expect(new Set(widths).size).toBe(5);
+  });
+  it('lays marks out like bricks: one in the middle of the top row, the next row wrapping around the sides', () => {
+    const t = tile('abc', 18, 3);
+    expect(t.marks).toBe(3);
+    const xs = [...t.svg.matchAll(/<text x="([\d.]+)" y="([\d.]+)"/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    expect(xs[0][0]).toBe(t.w / 2); // middle of the first row
+    expect(xs[1][0]).toBe(0); // second row: half a mark at each side edge
+    expect(xs[2][0]).toBe(t.w);
+    expect(xs[1][1]).toBe(xs[2][1]);
+    expect(xs[1][1]).toBe(t.h * 0.75); // centred in the lower half
+  });
+  it('clamps and defaults the style, including vaults made before these settings existed', () => {
+    expect(watermarkStyle({})).toEqual({ size: 18, density: 3 });
+    expect(watermarkStyle({ size: 500, density: 0 })).toEqual({ size: 48, density: 1 });
+    expect(watermarkStyle({ size: 2, density: 9 })).toEqual({ size: 10, density: 5 });
   });
 });

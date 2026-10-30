@@ -32,7 +32,15 @@ export interface Policy {
 }
 
 export interface Protection {
-  watermark: { enabled: boolean; text: string; opacity: number };
+  watermark: {
+    enabled: boolean;
+    text: string;
+    opacity: number;
+    /** font size in px; older vaults have none (18) */
+    size?: number;
+    /** 1 (sparse) … 5 (dense); older vaults have none (3) */
+    density?: number;
+  };
   allowCopy: boolean;
   allowPrint: boolean;
   allowDownload: boolean;
@@ -45,7 +53,7 @@ export interface Protection {
 export const DEFAULT_POLICY: Policy = { notBefore: null, expiresAt: null, maxOpens: null, maxFailures: 5, sessionMinutes: 30 };
 
 export const DEFAULT_PROTECTION: Protection = {
-  watermark: { enabled: true, text: '{收件人}  {時間}', opacity: 0.16 },
+  watermark: { enabled: true, text: '{收件人}  {時間}', opacity: 0.16, size: 18, density: 3 },
   allowCopy: false,
   allowPrint: false,
   allowDownload: false,
