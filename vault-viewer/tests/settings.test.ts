@@ -84,7 +84,7 @@ describe('settings.example.json', () => {
   const example = JSON.parse(readFileSync('settings.example.json', 'utf8'));
   it('is safe to copy as it is: it equals the built-in defaults', () => {
     expect(resolveSettings(example.app)).toEqual(DEFAULT_SETTINGS);
-    expect(wranglerArgs(example)).toEqual(['wrangler', 'deploy', '--name', 'vault-viewer', '--var', 'ADMIN_SESSION_HOURS:12', '--var', 'ADMIN_MAX_FAILURES:5', '--var', 'ADMIN_LOCK_MINUTES:15']);
+    expect(wranglerArgs(example)).toEqual(['wrangler', 'deploy', '--name', 'vault-viewer', '--var', 'ADMIN_SESSION_HOURS:12', '--var', 'ADMIN_MAX_FAILURES:5', '--var', 'ADMIN_LOCK_MINUTES:15', '--var', 'LOG_RETENTION_DAYS:365']);
     expect(readSettings({ VAULT_SETTINGS: JSON.stringify(example) }, '/n').source).toBe('VAULT_SETTINGS');
   });
 });

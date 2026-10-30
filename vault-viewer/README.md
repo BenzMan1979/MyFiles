@@ -105,7 +105,8 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
     "ADMIN_SESSION_HOURS": 12,    // 管理員登入有效幾小時
     "ADMIN_MAX_FAILURES": 5,      // 密碼錯幾次鎖定
     "ADMIN_LOCK_MINUTES": 15,     // 鎖定多久
-    "ADMIN_ORIGINS": ""           // 只允許哪些網站用瀏覽器呼叫管理 API（逗號分隔；空＝不限）
+    "ADMIN_ORIGINS": "",          // 只允許哪些網站用瀏覽器呼叫管理 API（逗號分隔；空＝不限）
+    "LOG_RETENTION_DAYS": 365     // 開啟紀錄保留幾天（0＝永遠保留）；統計圖表也以這些紀錄為準
   },
   "worker": { "name": "vault-viewer", "domain": "vault.example.com" }  // Worker 名稱；自訂網域（選填）
 }
@@ -123,6 +124,7 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
 - 收件人可以一個一個填，也可以用 **CSV 一次匯入**（名稱、密碼、備註；提供範本，Excel 的 Big5 與 UTF-8 檔都能讀），密碼旁有複製按鈕
 - 每位收件人各自一份封存檔、`.key` 金鑰檔、可列印的金鑰卡（含 QR Code），另外附一份只給發送者看的交付清單
 - 可以一次存到資料夾（Chrome／Edge）或下載成 ZIP
+- 統計圖表（管理頁最上方）：近 7／30／90 天的開啟與異常次數（和前一段期間比較）、每日開啟柱狀圖（可切成表格）、開啟地區與收件人排行、異常事件（密碼錯誤、被鎖定、收回或過期後仍有人嘗試）。以伺服器的開啟紀錄計算，紀錄預設保留 365 天（`LOG_RETENTION_DAYS`）
 - 管理頁：查看開啟次數、最後開啟時間、開啟紀錄（時間、地區、IP、瀏覽器、浮水印編號），可以收回、恢復、延長期限、調整次數、解除鎖定、刪除
 
 **檢視器**（就是封存檔本身）

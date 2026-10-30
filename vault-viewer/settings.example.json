@@ -39,7 +39,8 @@
   "server": {
     "ADMIN_SESSION_HOURS": 12,
     "ADMIN_MAX_FAILURES": 5,
-    "ADMIN_LOCK_MINUTES": 15
+    "ADMIN_LOCK_MINUTES": 15,
+    "LOG_RETENTION_DAYS": 365
   },
   "worker": {
     "name": "vault-viewer"

@@ -138,6 +138,19 @@ describe('packer', () => {
     const p = await gotoPacker('manage');
     await p.waitForSelector('table.table');
     await expect(p.locator('tr:has-text("王小明")').textContent()).resolves.toContain('1 / 2');
+    // statistics: the one open above shows in the headline number, the chart and the table view
+    await p.waitForSelector('.stats .tile');
+    await expect(p.locator('.tile:has-text("近 30 天開啟") .tile-value').textContent()).resolves.toBe('1');
+    await expect(p.locator('.tile:has-text("近 30 天異常") .tile-value').textContent()).resolves.toBe('0');
+    await expect(p.locator('.chart-host path').count()).resolves.toBe(1); // one coloured column: today's open
+    await p.hover('.chart-host svg rect:last-of-type', { position: { x: 5, y: 5 }, force: true });
+    await expect(p.locator('.tooltip').textContent()).resolves.toContain('成功開啟');
+    await p.click('.seg-btn:has-text("7 天")');
+    await p.waitForFunction(() => document.querySelector('.tile-label')?.parentElement && [...document.querySelectorAll('.tile-label')].some((e) => e.textContent === '近 7 天開啟'));
+    await p.click('.stats button:has-text("以表格檢視")');
+    await expect(p.locator('.stats table').first().locator('tbody tr').count()).resolves.toBe(7);
+    await p.click('.stats button:has-text("以圖表檢視")');
+    await p.screenshot({ path: join(OUT, '12a-stats.png'), fullPage: true });
     await p.click('tr:has-text("王小明") button:has-text("紀錄")');
     await p.waitForSelector('dialog td:has-text("開啟")');
     await shot(p, '12-manage-logs');
@@ -157,6 +170,13 @@ describe('packer', () => {
     await v.click('button[type=submit]');
     await v.waitForSelector('.error:has-text("收回")');
     await v.close();
+    // the refused attempt is now counted as a problem, with who and why
+    await p.evaluate(() => (location.hash = 'home'));
+    await p.evaluate(() => (location.hash = 'manage'));
+    await p.waitForSelector('.tile:has-text("近 7 天異常")');
+    await p.waitForFunction(() => document.querySelector('.stats .chip')?.textContent?.includes('已收回仍有人嘗試'));
+    await expect(p.locator('.stats table tbody tr:has-text("王小明")').first().textContent()).resolves.toContain('已收回');
+    await shot(p, '14-stats-issue');
     expect(errors).toEqual([]);
   });
 });

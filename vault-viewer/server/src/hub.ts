@@ -2,6 +2,8 @@
 // The Durable Object (index.ts) just passes its storage in; there is exactly one Hub, so every
 // counter update is serialised and strongly consistent.
 
+import { buildStats, type StatLog, type StatVault } from './stats';
+
 export const SERVER_VERSION = 1;
 
 export interface Store {
@@ -26,6 +28,8 @@ export interface Env {
   ADMIN_LOCK_MINUTES?: string | number;
   /** comma-separated websites allowed to call the admin API from a browser; empty = any (default) */
   ADMIN_ORIGINS?: string;
+  /** days the open log is kept; 0 = forever (default 365) */
+  LOG_RETENTION_DAYS?: string | number;
 }
 
 function envInt(v: string | number | undefined, fallback: number, min: number, max: number): number {
@@ -162,6 +166,9 @@ export class Hub {
   private get adminLockMs() {
     return envInt(this.env.ADMIN_LOCK_MINUTES, 15, 1, 24 * 60) * 60_000;
   }
+  private get logRetentionMs() {
+    return envInt(this.env.LOG_RETENTION_DAYS, 365, 0, 36500) * 86_400_000;
+  }
   private get adminOrigins(): string[] {
     return (this.env.ADMIN_ORIGINS ?? '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean);
   }
@@ -208,6 +215,7 @@ export class Hub {
         if (path === '/api/admin/password' && req.method === 'POST') return this.changePassword(await body(req));
         if (path === '/api/admin/vaults' && req.method === 'POST') return this.register(await body(req));
         if (path === '/api/admin/vaults' && req.method === 'GET') return this.listVaults();
+        if (path === '/api/admin/stats' && req.method === 'GET') return this.stats(new URL(req.url).searchParams);
         const m = path.match(/^\/api\/admin\/vaults\/([a-z0-9]{1,64})(\/logs)?$/);
         if (m && m[2] && req.method === 'GET') return this.logs(m[1]);
         if (m && !m[2] && req.method === 'PATCH') return this.update(m[1], await body(req));
@@ -321,6 +329,17 @@ export class Hub {
     const seq = ((await this.store.get<number>('logseq')) ?? 0) + 1;
     await this.store.put('logseq', seq);
     await this.store.put(`log:${vaultId}:${String(seq).padStart(12, '0')}`, { t, ...e });
+    if (seq % 50 === 0) await this.pruneLogs();
+  }
+
+  /** Drops log entries older than LOG_RETENTION_DAYS; runs now and then, not on every write. */
+  private async pruneLogs() {
+    const keep = this.logRetentionMs;
+    if (!keep) return;
+    const cutoff = new Date(this.now() - keep).toISOString();
+    for (const [k, l] of await this.store.list<LogEntry>({ prefix: 'log:' })) {
+      if (l.t < cutoff) await this.store.delete(k);
+    }
   }
 
   // ---------- admin ----------
@@ -431,6 +450,17 @@ export class Hub {
     const all = await this.store.list<VaultRecord>({ prefix: 'vault:' });
     const vaults = [...all.values()].map(publicVault).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return json({ ok: true, vaults, serverTime: new Date(this.now()).toISOString() });
+  }
+
+  private async stats(q: URLSearchParams) {
+    const num = (k: string, d: number) => (q.get(k) !== null && Number.isFinite(Number(q.get(k))) ? Number(q.get(k)) : d);
+    const vaults = [...(await this.store.list<VaultRecord>({ prefix: 'vault:' })).values()] as StatVault[];
+    const logs: StatLog[] = [];
+    for (const [k, l] of await this.store.list<LogEntry>({ prefix: 'log:' })) {
+      logs.push({ ...l, vaultId: k.split(':')[1] });
+    }
+    const stats = buildStats(vaults, logs, { days: num('days', 30), tzOffset: num('tzOffset', 0), now: this.now() });
+    return json({ ok: true, stats, serverTime: new Date(this.now()).toISOString() });
   }
 
   private async logs(id: string) {

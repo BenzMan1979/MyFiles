@@ -11,7 +11,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 
 /** Worker variables the server reads (see Env in server/src/hub.ts). ADMIN_PASSWORD is a secret, not a variable. */
-export const SERVER_KEYS = ['ADMIN_SESSION_HOURS', 'ADMIN_MAX_FAILURES', 'ADMIN_LOCK_MINUTES', 'ADMIN_ORIGINS'];
+export const SERVER_KEYS = ['ADMIN_SESSION_HOURS', 'ADMIN_MAX_FAILURES', 'ADMIN_LOCK_MINUTES', 'ADMIN_ORIGINS', 'LOG_RETENTION_DAYS'];
 
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 

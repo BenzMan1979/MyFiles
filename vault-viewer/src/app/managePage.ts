@@ -1,6 +1,7 @@
 import { clear, formatDateTime, h } from '../shared/dom';
 import { api, servers, tokens, type RemoteLog, type RemoteVault, type ServerProfile } from './api';
 import { loginDialog } from './serverPage';
+import { statsPanel } from './statsView';
 import { confirmDialog, fromLocalInput, modal, section, toast, toLocalInput } from './ui';
 
 let selectedServer = '';
@@ -87,7 +88,7 @@ async function load(server: ServerProfile, body: HTMLElement, rerender: () => vo
   };
   search.addEventListener('input', draw);
   draw();
-  body.append(search, listEl);
+  body.append(statsPanel(server), search, listEl);
 }
 
 function batchCard(server: ServerProfile, title: string, vaults: RemoteVault[], now: number, rerender: () => void) {

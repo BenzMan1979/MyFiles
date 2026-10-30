@@ -184,5 +184,70 @@ describe('hub', () => {
     for (let i = 0; i < 4; i++) await call('POST', '/api/admin/login', { password: 'nope' });
     expect((await call('POST', '/api/admin/login', { password: 'admin-pass' })).status).toBe(200); // still 5 tries
   });
+
+  describe('statistics', () => {
+    const stats = async (q = 'days=7&tzOffset=0') => (await call('GET', `/api/admin/stats?${q}`, undefined, await admin())).body.stats;
+
+    it('counts opens, issues and vault states for the chosen period', async () => {
+      await register({ maxOpens: 5, maxFailures: 3, expiresAt: '2026-11-30T00:00:00Z' });
+      await register({ maxOpens: 1 }, 'v2');
+      const tw = { headers: { 'x-vv-country': 'TW', 'x-vv-ip': '1.1.1.1' } };
+      await open(authKey, undefined, 'v1', tw);
+      now += 3600_000;
+      await open(authKey, undefined, 'v1', { headers: { 'x-vv-country': 'JP' } });
+      await open(authKey, undefined, 'v2', tw);
+      await open(authKey, undefined, 'v2', tw); // exhausted
+      await open(randomBytes(32), undefined, 'v1', tw); // wrong key
+      const s = await stats();
+      expect(s.period).toEqual({ opens: 3, resumes: 0, issues: 2 });
+      expect(s.previous).toEqual({ opens: 0, resumes: 0, issues: 0 });
+      expect(s.daily).toHaveLength(7);
+      expect(s.daily.at(-1)).toMatchObject({ date: '2026-11-01', opens: 3, issues: 2 });
+      expect(s.countries).toEqual([{ name: 'TW', count: 2 }, { name: 'JP', count: 1 }]);
+      expect(s.recipients).toEqual([{ name: '小明', count: 3 }]);
+      expect(s.issues).toEqual([{ kind: 'bad_proof', count: 1 }, { kind: 'exhausted', count: 1 }]);
+      expect(s.recent[0]).toMatchObject({ kind: 'bad_proof', recipient: '小明', country: 'TW', ip: '1.1.1.1' });
+      expect(s.totals).toMatchObject({ vaults: 2, active: 1, exhausted: 1, opensEver: 3 });
+    });
+
+    it('compares with the period before and groups days by the viewer’s time zone', async () => {
+      await register({});
+      await open();
+      now += 8 * 86_400_000;
+      await open();
+      const s = await stats('days=7&tzOffset=480'); // UTC+8
+      expect(s.period.opens).toBe(1);
+      expect(s.previous.opens).toBe(1);
+      expect(s.to).toBe('2026-11-09');
+      const tz = await stats('days=30&tzOffset=-300'); // the first open, at 00:00Z, is still the evening before in UTC-5
+      expect(tz.daily.find((d: any) => d.date === '2026-10-31').opens).toBe(1);
+    });
+
+    it('needs the admin login and ignores nonsense query values', async () => {
+      expect((await call('GET', '/api/admin/stats')).status).toBe(401);
+      const s = await stats('days=abc&tzOffset=999999');
+      expect(s.days).toBe(30);
+      expect(s.daily).toHaveLength(30);
+    });
+
+    it('folds the long tail of countries into 其他', async () => {
+      await register({});
+      for (const c of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']) await open(authKey, undefined, 'v1', { headers: { 'x-vv-country': c } });
+      const s = await stats();
+      expect(s.countries).toHaveLength(8);
+      expect(s.countries.at(-1)).toEqual({ name: '其他', count: 2 });
+    });
+  });
+
+  it('prunes log entries older than the retention setting', async () => {
+    hub = new Hub(new MemoryStore(), { ADMIN_PASSWORD: 'admin-pass', LOG_RETENTION_DAYS: '10' }, () => now);
+    await register({ maxFailures: 0 });
+    await open(authKey);
+    now += 20 * 86_400_000;
+    for (let i = 0; i < 50; i++) await open(randomBytes(32)); // the 50th log write triggers the cleanup
+    const logs = (await call('GET', '/api/admin/vaults/v1/logs', undefined, await admin())).body.logs;
+    expect(logs).toHaveLength(50);
+    expect(logs.every((l: any) => l.ev === 'bad_proof')).toBe(true);
+  });
 });
 
