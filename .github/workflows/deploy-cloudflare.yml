@@ -39,6 +39,7 @@ jobs:
     steps:
       - name: Check secrets
         id: check
+        working-directory: . # the repo is not checked out yet, so vault-viewer/ does not exist
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "Cloudflare secrets not set; skipping deploy."

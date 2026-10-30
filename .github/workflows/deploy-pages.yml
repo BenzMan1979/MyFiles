@@ -42,7 +42,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - uses: actions/configure-pages@v5
+      # (no configure-pages step: the site uses relative paths, so it does not need the base address)
       - uses: actions/upload-pages-artifact@v3
         with:
           path: vault-viewer/dist
