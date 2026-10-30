@@ -9,6 +9,17 @@ export interface OpenedVault {
   manifest: Manifest;
   contentKey: CryptoKey;
   status: { opens: number; maxOpens: number | null; expiresAt: string | null };
+  /** Short code for the watermark; online vaults log it so a screenshot can be traced. */
+  tag: string;
+  /** The address the server saw (online vaults only). */
+  client: { ip: string | null; country: string | null } | null;
+}
+
+const TAG_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function newTag(): string {
+  const r = new Uint8Array(6);
+  crypto.getRandomValues(r);
+  return Array.from(r, (n) => TAG_ALPHABET[n % TAG_ALPHABET.length]).join('');
 }
 
 export class UnlockError extends Error {
@@ -97,7 +108,7 @@ async function unlockOffline(header: VaultHeader, password: string, keyfile: Uin
     countedThisPage.add(header.id);
   }
   saveState(header.id, st);
-  return { manifest, contentKey, status: { opens: st.opens, maxOpens: p.maxOpens, expiresAt: p.expiresAt } };
+  return { manifest, contentKey, status: { opens: st.opens, maxOpens: p.maxOpens, expiresAt: p.expiresAt }, tag: newTag(), client: null };
 }
 
 // ---------- online ----------
@@ -132,7 +143,8 @@ async function unlockOnline(header: VaultHeader, password: string, keyfile: Uint
   const nonce = String(ch.data.nonce);
   const proof = toB64(await hmac(authKey, openProofMessage(header.id, nonce)));
   const session = onlineSession?.vaultId === header.id ? onlineSession.token : undefined;
-  const r = await post(server, '/api/open', { vaultId: header.id, nonce, proof, session });
+  const tag = newTag();
+  const r = await post(server, '/api/open', { vaultId: header.id, nonce, proof, session, tag });
   if (!r.ok) {
     const code = String(r.data.code);
     let msg = String(r.data.message ?? '無法開啟');
@@ -148,7 +160,8 @@ async function unlockOnline(header: VaultHeader, password: string, keyfile: Uint
     throw new UnlockError('伺服器驗證通過，但無法解開內容（封存檔可能損毀）', 'corrupt', true);
   }
   const s = r.data.status as { opens: number; maxOpens: number | null; expiresAt: string | null };
-  return { manifest, contentKey, status: { opens: s.opens, maxOpens: s.maxOpens, expiresAt: s.expiresAt } };
+  const client = r.data.client as { ip: string | null; country: string | null } | undefined;
+  return { manifest, contentKey, status: { opens: s.opens, maxOpens: s.maxOpens, expiresAt: s.expiresAt }, tag, client: client ?? null };
 }
 
 export function unlockVault(header: VaultHeader, password: string, keyfile: Uint8Array): Promise<OpenedVault> {

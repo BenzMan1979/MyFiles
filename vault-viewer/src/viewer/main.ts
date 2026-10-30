@@ -283,7 +283,7 @@ function showMain(payload: Payload, opened: OpenedVault) {
   const paintWatermark = () => {
     if (!prot.watermark.enabled) return;
     const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-    overlay.style.backgroundImage = watermarkBackground(watermarkText(prot, manifest.recipient || '', openedAt), Math.max(0.04, Math.min(0.5, prot.watermark.opacity)), dark);
+    overlay.style.backgroundImage = watermarkBackground(watermarkText(prot, { recipient: manifest.recipient || '', note: manifest.note, openedAt, ip: opened.client?.ip, country: opened.client?.country, tag: opened.tag }), Math.max(0.04, Math.min(0.5, prot.watermark.opacity)), dark);
   };
   paintWatermark();
   const mq = matchMedia('(prefers-color-scheme: dark)');

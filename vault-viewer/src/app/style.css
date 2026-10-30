@@ -99,8 +99,15 @@ details.faq summary { color: var(--text); font-weight: 600; }
 .wm-doc p { margin: 2px 0; text-align: center; }
 
 /* recipients */
-.recipient-head, .recipient-row { display: grid; grid-template-columns: 26px 1fr 1fr 36px; gap: 8px; align-items: center; }
+.recipient-head, .recipient-row { display: grid; grid-template-columns: 30px 1.2fr 1.4fr 1fr 36px; gap: 8px; align-items: center; }
+.recipients.same .recipient-row, .recipient-head.same { grid-template-columns: 30px 1.4fr 1fr 36px; }
+.recipients { max-height: 460px; overflow-y: auto; padding-right: 4px; }
 .recipient-row { margin: 6px 0; }
+.import-box { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; background: var(--accent-soft); border-radius: 10px; padding: 12px 14px; margin: 10px 0 6px; }
+.import-box > div:first-child { flex: 1; min-width: 240px; }
+ul.plain { margin: 4px 0 0; padding-left: 18px; }
+.hint-box { background: var(--surface-2); border-radius: 8px; padding: 8px 12px; margin: 4px 0 12px; font-size: 13px; }
+.hint-box p { margin: 4px 0; }
 .pw-cell { display: flex; gap: 6px; }
 
 /* summary & results */
@@ -144,8 +151,8 @@ dialog.modal::backdrop { background: rgba(10, 14, 20, 0.45); }
   .app-nav a { white-space: nowrap; }
   .page { padding: 18px 16px 40px; }
   .recipient-head { display: none; }
-  .recipient-row { grid-template-columns: 22px 1fr 36px; }
-  .recipient-row .pw-cell { grid-column: 2; }
+  .recipient-row, .recipients.same .recipient-row { grid-template-columns: 22px 1fr 36px; }
+  .recipient-row .pw-cell, .recipient-row > input:nth-of-type(2) { grid-column: 2; }
   .result-grid { grid-template-columns: 1fr; }
   .step { flex-direction: column; gap: 8px; }
 }

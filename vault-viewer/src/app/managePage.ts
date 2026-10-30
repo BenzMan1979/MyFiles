@@ -195,10 +195,11 @@ async function showLogs(server: ServerProfile, v: RemoteVault) {
     if (!logs.length) box.append(h('p', { class: 'muted' }, '還沒有任何紀錄'));
     else
       box.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table small' },
-        h('thead', null, h('tr', null, ...['時間', '事件', '地區', 'IP', '瀏覽器'].map((t) => h('th', null, t)))),
+        h('thead', null, h('tr', null, ...['時間', '事件', '編號', '地區', 'IP', '瀏覽器'].map((t) => h('th', null, t)))),
         h('tbody', null, ...logs.map((l) => h('tr', null,
           h('td', null, formatDateTime(l.t)),
           h('td', null, EVENT_LABEL[l.ev] ?? l.ev, l.ev === 'denied' && l.detail ? `（${DENY_LABEL[l.detail] ?? l.detail}）` : ''),
+          h('td', { class: 'mono' }, l.tag || '—'),
           h('td', null, l.country || '—'),
           h('td', { class: 'mono' }, l.ip || '—'),
           h('td', null, browserOf(l.ua)),

@@ -125,6 +125,7 @@ describe('viewer (online)', () => {
     const { path, key, v } = await makeVault('online', {
       mode: 'online', server: hub.url, serverShare: share,
       policy: { ...DEFAULT_POLICY, maxOpens: 2, sessionMinutes: 30 },
+      protection: { ...DEFAULT_PROTECTION, watermark: { ...DEFAULT_PROTECTION.watermark, text: '{收件人} {IP} {地區} {編號}' } },
     });
     const login = await (await fetch(`${hub.url}/api/admin/login`, { method: 'POST', body: JSON.stringify({ password: 'admin-pass-123' }) })).json();
     const auth = { authorization: `Bearer ${login.token}` };
@@ -139,6 +140,12 @@ describe('viewer (online)', () => {
     await unlock(page, 'abcd-efgh-jkmn', key);
     await page.waitForSelector('.tree');
     await expect(page.locator('.topbar').textContent()).resolves.toContain('剩餘 1 次');
+    // the watermark carries the address the server saw and a code that the server logged
+    const mark = decodeURIComponent(await page.locator('.watermark').evaluate((el) => getComputedStyle(el).backgroundImage));
+    const code = mark.match(/王小明 127\.0\.0\.1 TW ([A-Z2-9]{6})/)?.[1];
+    expect(code).toBeTruthy();
+    const logs = await (await fetch(`${hub.url}/api/admin/vaults/${v.header.id}/logs`, { headers: auth })).json();
+    expect(logs.logs[0]).toMatchObject({ ev: 'open', tag: code, ip: '127.0.0.1', country: 'TW' });
     await page.click('.file:has-text("備註.txt")');
     await page.waitForSelector('pre.code');
     // re-lock + unlock inside the session does not use another open

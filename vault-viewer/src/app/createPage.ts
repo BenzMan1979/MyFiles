@@ -4,8 +4,9 @@ import { buildVault, DEFAULT_POLICY, DEFAULT_PROTECTION, renderVaultHtml, type I
 import { generatePassword, keyFileContent, keyToText, randomId } from '../core/keytext';
 import { extOf, formatSize, guessMime, kindOf } from '../core/mime';
 import { formatDateTime, h, saveBlob } from '../shared/dom';
-import { watermarkBackground, watermarkText } from '../viewer/protect';
+import { describeDevice, watermarkBackground, watermarkText } from '../viewer/protect';
 import { api, servers, tokens } from './api';
+import { decodeCsv, MAX_RECIPIENTS, MIN_PASSWORD, parseRecipients, templateCsv } from './csv';
 import { canPickFolder, downloadKeyCard, downloadSheet, downloadZip, safeName, saveToFolder, type BatchOutput } from './output';
 import { loginDialog } from './serverPage';
 import { confirmDialog, copyButton, field, fromLocalInput, modal, qrElement, section, toast, toggle } from './ui';
@@ -24,7 +25,7 @@ interface Draft {
   maxOpens: number;
   policy: Policy;
   protection: Protection;
-  recipients: { name: string; password: string }[];
+  recipients: { name: string; password: string; note: string }[];
   samePassword: boolean;
   sharedPassword: string;
 }
@@ -42,7 +43,7 @@ function newDraft(): Draft {
     maxOpens: 5,
     policy: { ...DEFAULT_POLICY },
     protection: structuredClone(DEFAULT_PROTECTION),
-    recipients: [{ name: '', password: generatePassword() }],
+    recipients: [{ name: '', password: generatePassword(), note: '' }],
     samePassword: false,
     sharedPassword: generatePassword(),
   };
@@ -111,8 +112,9 @@ function validate(i: number): string | null {
     const names = draft.recipients.map((r) => r.name.trim());
     if (names.some((n) => !n)) return '每位收件人都要填名稱';
     if (new Set(names).size !== names.length) return '收件人名稱不能重複';
+    if (draft.recipients.length > MAX_RECIPIENTS) return `一次最多 ${MAX_RECIPIENTS} 位收件人，請分批建立`;
     const pws = draft.samePassword ? [draft.sharedPassword] : draft.recipients.map((r) => r.password);
-    if (pws.some((p) => p.length < 6)) return '密碼至少 6 個字元（建議使用自動產生的密碼）';
+    if (pws.some((p) => p.length < MIN_PASSWORD)) return `密碼至少 ${MIN_PASSWORD} 個字元（建議使用自動產生的密碼）`;
   }
   return null;
 }
@@ -317,9 +319,18 @@ function stepPolicy(body: HTMLElement, rerender: () => void) {
 function stepProtection(body: HTMLElement, rerender: () => void) {
   const pr = draft.protection;
   const wmText = h('input', { class: 'input', value: pr.watermark.text });
+  const sample = () => ({
+    recipient: draft.recipients[0]?.name || '王小明',
+    note: draft.recipients[0]?.note || '財務部 NB-0123',
+    openedAt: new Date(),
+    ip: draft.mode === 'online' ? '203.0.113.8' : null,
+    country: draft.mode === 'online' ? 'TW' : null,
+    tag: 'A7K2Q9',
+    device: describeDevice(),
+  });
   const preview = h('div', { class: 'wm-preview' }, h('div', { class: 'wm-doc' }, h('p', null, '文件內容預覽'), h('p', { class: 'muted' }, '浮水印會斜斜地重複蓋在內容上方。')));
   const paint = () => {
-    preview.style.backgroundImage = pr.watermark.enabled ? watermarkBackground(watermarkText(pr, draft.recipients[0]?.name || '王小明', new Date()), pr.watermark.opacity, false) : 'none';
+    preview.style.backgroundImage = pr.watermark.enabled ? watermarkBackground(watermarkText(pr, sample()), pr.watermark.opacity, false) : 'none';
   };
   wmText.addEventListener('input', () => {
     pr.watermark.text = wmText.value;
@@ -331,6 +342,8 @@ function stepProtection(body: HTMLElement, rerender: () => void) {
     paint();
   });
   const token = (t: string) => h('button', { type: 'button', class: 'btn small', onclick: () => { wmText.value += t; pr.watermark.text = wmText.value; paint(); } }, `＋${t}`);
+  const preset = (label: string, text: string) => h('button', { type: 'button', class: 'btn small', onclick: () => { pr.watermark.text = text; rerender(); } }, label);
+  const online = draft.mode === 'online';
   paint();
 
   const idle = h('select', { class: 'input narrow' }, ...[0, 5, 10, 15, 30, 60].map((m) => h('option', { value: m, selected: pr.idleLockMinutes === m }, m ? `${m} 分鐘` : '不啟用')));
@@ -343,7 +356,18 @@ function stepProtection(body: HTMLElement, rerender: () => void) {
       toggle('顯示浮水印', pr.watermark.enabled, (v) => { pr.watermark.enabled = v; rerender(); }, '在內容上蓋收件人名稱與時間，截圖或翻拍外流時可以追查來源。'),
       pr.watermark.enabled
         ? h('div', null,
-            field('浮水印文字', wmText, h('span', null, '可以插入：', token('{收件人}'), ' ', token('{時間}'), ' ', token('{日期}'))),
+            h('div', { class: 'field' },
+              h('div', { class: 'label' }, '常用樣式'),
+              h('div', { class: 'row-buttons', style: 'margin-top:0' },
+                preset('簡單：名字＋時間', '{收件人}  {時間}'),
+                preset(online ? '追蹤：名字＋IP＋編號' : '追蹤：名字＋裝置＋編號', online ? '{收件人}  {IP}  {編號}  {時間}' : '{收件人}  {裝置}  {編號}  {時間}'),
+              ),
+              h('p', { class: 'hint' }, '「編號」是每次開啟隨機產生的代碼。', online ? '線上模式會把它連同 IP 記在伺服器的開啟紀錄，外流的截圖可以靠編號查出是哪一次、從哪裡開的。' : '離線模式沒有伺服器可以對照，編號只能當標記。')),
+            field('浮水印文字', wmText, h('span', null, '可以插入：', ...['{收件人}', '{時間}', '{日期}', '{IP}', '{地區}', '{裝置}', '{編號}', '{備註}'].flatMap((t) => [token(t), ' ']))),
+            h('div', { class: 'hint-box' },
+              h('p', null, h('strong', null, '{IP}、{地區}'), '：對方開啟時網路對外的位址，只有線上模式才取得到（離線會顯示「—」）。對方看得到自己的 IP，同時伺服器也會記錄。'),
+              h('p', null, h('strong', null, '{裝置}'), '：只能顯示瀏覽器和作業系統（例如 Chrome 130 / Windows）。網頁沒有任何方法讀到電腦名稱或硬體資訊。'),
+              h('p', null, h('strong', null, '{備註}'), '：想標示電腦名稱的話，可以在上一步的收件人「備註」填入發放給對方的電腦名稱或部門。')),
             field('濃淡', opacity),
             preview)
         : null,
@@ -363,30 +387,69 @@ function stepProtection(body: HTMLElement, rerender: () => void) {
 
 // ---------- step 5: recipients ----------
 
+const blankRecipient = () => ({ name: '', password: generatePassword(), note: '' });
+
 function stepRecipients(body: HTMLElement, rerender: () => void) {
-  const rows = h('div', { class: 'recipients' });
+  const rows = h('div', { class: `recipients ${draft.samePassword ? 'same' : ''}` });
   draft.recipients.forEach((r, i) => {
-    const name = h('input', { class: 'input', value: r.name, placeholder: '收件人名稱（會顯示在浮水印上）' });
+    const name = h('input', { class: 'input', value: r.name, placeholder: '收件人名稱（會顯示在浮水印上）', maxlength: 100 });
     name.addEventListener('input', () => (r.name = name.value));
+    const note = h('input', { class: 'input', value: r.note, placeholder: '備註（選填）', maxlength: 100 });
+    note.addEventListener('input', () => (r.note = note.value));
     const pw = h('input', { class: 'input mono', value: r.password });
     pw.addEventListener('input', () => (r.password = pw.value));
     rows.append(h('div', { class: 'recipient-row' },
       h('span', { class: 'muted' }, `${i + 1}.`),
       name,
-      draft.samePassword ? null : h('div', { class: 'pw-cell' }, pw, h('button', { type: 'button', class: 'btn small', title: '重新產生密碼', onclick: () => { r.password = generatePassword(); rerender(); } }, '🎲')),
+      draft.samePassword ? null : h('div', { class: 'pw-cell' }, pw, copyButton(() => r.password), h('button', { type: 'button', class: 'btn small', title: '重新產生密碼', onclick: () => { r.password = generatePassword(); rerender(); } }, '🎲')),
+      note,
       draft.recipients.length > 1 ? h('button', { type: 'button', class: 'btn ghost small', title: '移除', onclick: () => { draft.recipients.splice(i, 1); rerender(); } }, '✕') : h('span'),
     ));
   });
 
   const bulk = async () => {
     const ta = h('textarea', { class: 'input', rows: 8, placeholder: '一行一個名字，例如：\n王小明\n陳小華' });
-    if ((await modal('批次加入收件人', [ta], [{ label: '取消', value: '' }, { label: '加入', value: 'ok', kind: 'primary' }])) !== 'ok') return;
+    if ((await modal('貼上名單', [ta], [{ label: '取消', value: '' }, { label: '加入', value: 'ok', kind: 'primary' }])) !== 'ok') return;
     const names = ta.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
     draft.recipients = draft.recipients.filter((r) => r.name.trim());
-    for (const n of names) if (!draft.recipients.some((r) => r.name === n)) draft.recipients.push({ name: n, password: generatePassword() });
-    if (!draft.recipients.length) draft.recipients.push({ name: '', password: generatePassword() });
+    for (const n of names) if (!draft.recipients.some((r) => r.name === n)) draft.recipients.push({ ...blankRecipient(), name: n });
+    if (!draft.recipients.length) draft.recipients.push(blankRecipient());
     rerender();
   };
+
+  const csvInput = h('input', { type: 'file', accept: '.csv,.txt,text/csv', hidden: true });
+  csvInput.addEventListener('change', async () => {
+    const f = csvInput.files?.[0];
+    csvInput.value = '';
+    if (!f) return;
+    const res = parseRecipients(decodeCsv(new Uint8Array(await f.arrayBuffer())));
+    const existing = draft.recipients.filter((r) => r.name.trim());
+    const lines: (HTMLElement | null)[] = [
+      h('p', null, `讀到 `, h('strong', null, `${res.recipients.length} 位`), ` 收件人`, res.skipped ? `，略過 ${res.skipped} 列` : '', '。'),
+      res.recipients.length
+        ? h('p', { class: 'muted small' }, `前幾位：${res.recipients.slice(0, 5).map((r) => r.name).join('、')}${res.recipients.length > 5 ? '…' : ''}`)
+        : null,
+      res.recipients.some((r) => !r.password) ? h('p', { class: 'hint' }, '密碼留空的會自動產生。') : null,
+      res.warnings.length
+        ? h('div', { class: 'note warn' }, h('strong', null, '請留意：'), h('ul', { class: 'plain' }, ...res.warnings.slice(0, 8).map((w) => h('li', null, w)), res.warnings.length > 8 ? h('li', null, `…還有 ${res.warnings.length - 8} 則`) : null))
+        : null,
+    ];
+    if (!res.recipients.length) {
+      await modal('匯入 CSV', lines.filter((x): x is HTMLElement => !!x));
+      return;
+    }
+    const buttons = [{ label: '取消', value: '' }, ...(existing.length ? [{ label: `加入現有的 ${existing.length} 位之後`, value: 'add' }] : []), { label: existing.length ? '取代現有名單' : '匯入', value: 'replace', kind: 'primary' }];
+    const choice = await modal('匯入 CSV', lines.filter((x): x is HTMLElement => !!x), buttons);
+    if (!choice) return;
+    const incoming = res.recipients.map((r) => ({ name: r.name, password: r.password || generatePassword(), note: r.note }));
+    if (choice === 'replace') draft.recipients = incoming;
+    else {
+      const have = new Set(existing.map((r) => r.name));
+      draft.recipients = [...existing, ...incoming.filter((r) => !have.has(r.name))];
+    }
+    toast(`已匯入 ${incoming.length} 位收件人`);
+    rerender();
+  });
 
   const shared = h('input', { class: 'input mono', value: draft.sharedPassword });
   shared.addEventListener('input', () => (draft.sharedPassword = shared.value));
@@ -394,13 +457,23 @@ function stepRecipients(body: HTMLElement, rerender: () => void) {
   body.append(
     section('收件人',
       h('p', { class: 'muted' }, '每位收件人會拿到自己的封存檔和金鑰：次數分開計算、浮水印顯示各自的名字，也可以單獨收回。自己用的話，填自己的名字就好。'),
+      h('div', { class: 'import-box' },
+        h('div', null, h('strong', null, '人很多？用 CSV 一次匯入'), h('p', { class: 'hint', style: 'margin:2px 0 0' }, '欄位：名稱、密碼（留空自動產生）、備註（選填，可以放電腦名稱或部門，用在浮水印）。Excel 另存成 CSV 即可。')),
+        h('div', { class: 'row-buttons', style: 'margin:0' },
+          h('button', { type: 'button', class: 'btn primary', onclick: () => csvInput.click() }, '📥 匯入 CSV…'),
+          h('button', { type: 'button', class: 'btn', onclick: () => saveBlob(new Blob([templateCsv()], { type: 'text/csv;charset=utf-8' }), '收件人名單範本.csv') }, '下載範本'),
+        ),
+        csvInput,
+      ),
       toggle('所有收件人使用同一組密碼', draft.samePassword, (v) => { draft.samePassword = v; rerender(); }, '金鑰仍然每人不同。'),
-      draft.samePassword ? field('共用密碼', h('div', { class: 'pw-cell' }, shared, h('button', { type: 'button', class: 'btn small', onclick: () => { draft.sharedPassword = generatePassword(); rerender(); } }, '🎲'))) : null,
-      h('div', { class: 'recipient-head muted small' }, h('span'), h('span', null, '名稱'), draft.samePassword ? null : h('span', null, '密碼（可自訂，建議用自動產生的）'), h('span')),
+      draft.samePassword ? field('共用密碼', h('div', { class: 'pw-cell' }, shared, copyButton(() => draft.sharedPassword), h('button', { type: 'button', class: 'btn small', title: '重新產生密碼', onclick: () => { draft.sharedPassword = generatePassword(); rerender(); } }, '🎲'))) : null,
+      h('div', { class: `recipient-head muted small ${draft.samePassword ? 'same' : ''}` }, h('span'), h('span', null, '名稱'), draft.samePassword ? null : h('span', null, '密碼（可自訂，建議用自動產生的）'), h('span', null, '備註'), h('span')),
       rows,
+      h('p', { class: 'muted small' }, `共 ${draft.recipients.length} 位`),
       h('div', { class: 'row-buttons' },
-        h('button', { type: 'button', class: 'btn', onclick: () => { draft.recipients.push({ name: '', password: generatePassword() }); rerender(); } }, '＋ 新增收件人'),
-        h('button', { type: 'button', class: 'btn', onclick: bulk }, '批次貼上名單…'),
+        h('button', { type: 'button', class: 'btn', onclick: () => { draft.recipients.push(blankRecipient()); rerender(); } }, '＋ 新增收件人'),
+        h('button', { type: 'button', class: 'btn', onclick: bulk }, '貼上名單…'),
+        draft.recipients.length > 1 ? h('button', { type: 'button', class: 'btn danger', onclick: async () => { if (await confirmDialog('清空名單', '確定要清空全部收件人嗎？', '清空', true)) { draft.recipients = [blankRecipient()]; rerender(); } } }, '清空') : null,
       ),
     ),
   );
@@ -423,6 +496,7 @@ function stepGenerate(body: HTMLElement, rerender: () => void) {
     h('dt', null, '收件人'), h('dd', null, draft.recipients.map((r) => r.name).join('、')),
   );
 
+  const outBytes = total * draft.recipients.length;
   const loggedIn = !server || !!tokens.get(server.id);
   const progressText = h('p', { class: 'muted' });
   const bar = h('div', { class: 'size-fill', style: 'width:0%' });
@@ -448,6 +522,9 @@ function stepGenerate(body: HTMLElement, rerender: () => void) {
   });
 
   body.append(
+    outBytes > 1024 ** 3
+      ? h('p', { class: 'note warn' }, `每位收件人的封存檔都要各自加密一份，總共約 ${formatSize(outBytes)}，瀏覽器可能會因為記憶體不足而失敗。建議分成幾批建立（每批合計 1GB 以內）。`)
+      : '',
     section('確認設定', summary),
     section('產生',
       !loggedIn && server
@@ -490,7 +567,7 @@ async function generate(onProgress: (done: number, all: number, label: string) =
     const share = server ? randomBytes(32) : null;
     onProgress(i, n, `正在為「${name}」加密（${i + 1}/${n}）…`);
     const built = await buildVault(inputs, {
-      title, recipient: name, batchId, mode: draft.mode, server: server?.url ?? null, policy,
+      title, recipient: name, note: r.note.trim(), batchId, mode: draft.mode, server: server?.url ?? null, policy,
       protection: structuredClone(draft.protection), password, keyfile, serverShare: share,
     }, (done) => onProgress(i + done / total, n, `正在為「${name}」加密（${i + 1}/${n}）… ${Math.round((done / total) * 100)}%`));
     await new Promise((r) => setTimeout(r, 0));

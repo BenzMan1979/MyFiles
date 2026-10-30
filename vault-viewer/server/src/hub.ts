@@ -43,6 +43,8 @@ export interface LogEntry {
   t: string;
   ev: 'open' | 'resume' | 'bad_proof' | 'locked' | 'denied';
   detail?: string;
+  /** short code shown in the viewer's watermark, so a leaked screenshot maps back to this entry */
+  tag?: string;
   ip?: string;
   country?: string;
   ua?: string;
@@ -198,7 +200,10 @@ export class Hub {
     const v = await this.store.get<VaultRecord>(key);
     if (!v) return fail(404, 'unknown', '伺服器上找不到這份封存檔（可能已被刪除）');
     const now = this.now();
-    const meta = { ip: req.headers.get('x-vv-ip') ?? undefined, country: req.headers.get('x-vv-country') ?? undefined, ua: req.headers.get('user-agent')?.slice(0, 200) };
+    const tag = isStr(b.tag, 16) && /^[A-Za-z0-9]+$/.test(b.tag) ? b.tag : undefined;
+    const ip = req.headers.get('x-vv-ip') || undefined;
+    const country = req.headers.get('x-vv-country') || undefined;
+    const meta = { ip, country, ua: req.headers.get('user-agent')?.slice(0, 200), tag };
     const deny = async (status: number, code: string, message: string, extra: object = {}) => {
       await this.log(v.id, { ev: 'denied', detail: code, ...meta });
       return fail(status, code, message, extra);
@@ -258,6 +263,8 @@ export class Hub {
       ok: true,
       share: v.share,
       session: v.policy.sessionMinutes > 0 ? session : null,
+      // The address the server saw, so the viewer can put it in the watermark.
+      client: { ip: ip ?? null, country: country ?? null },
       status: {
         opens: v.opens,
         maxOpens: v.policy.maxOpens,

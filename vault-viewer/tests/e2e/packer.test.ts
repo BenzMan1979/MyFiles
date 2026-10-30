@@ -27,7 +27,7 @@ afterAll(async () => {
 
 async function page(url: string): Promise<Page> {
   const p = await ctx.newPage();
-  p.on('pageerror', (e) => { errors.push(String(e)); console.log('[pageerror]', String(e), (e as Error).stack?.slice(0, 300), p.url().slice(0, 80)); });
+  p.on('pageerror', (e) => { errors.push(String(e)); console.log('[pageerror]', JSON.stringify({ msg: String(e), stack: (e as Error).stack?.slice(0, 400), url: p.url().slice(0, 100) })); });
   p.on('console', (m) => m.type() === 'error' && console.log('[console]', m.text()));
   p.on('dialog', (d) => d.accept());
   await p.goto(url);
@@ -82,11 +82,26 @@ describe('packer', () => {
     await p.fill('input[type=number][min="1"]', '2');
     await shot(p, '06-create-policy');
     await p.click('button:has-text("下一步")');
+    await p.click('button:has-text("追蹤：名字＋IP＋編號")');
+    expect(await p.evaluate(() => Array.from(document.querySelectorAll('input')).some((i) => i.value.includes('{IP}')))).toBe(true);
     await shot(p, '07-create-protection');
     await p.click('button:has-text("下一步")');
-    await p.fill('.recipient-row input >> nth=0', '王小明');
-    await p.click('button:has-text("新增收件人")');
-    await p.fill('.recipient-row >> nth=1 >> input >> nth=0', '陳小華');
+    // template download, then import a Big5-free UTF-8 CSV (with BOM, quoted field and a short password)
+    const [tpl] = await Promise.all([p.waitForEvent('download'), p.click('button:has-text("下載範本")')]);
+    expect(tpl.suggestedFilename()).toBe('收件人名單範本.csv');
+    const csv = '\uFEFF名稱,密碼,備註\r\n王小明,,"財務部, NB-0123"\r\n陳小華,my-pass-2026,業務部\r\n王小明,dup-dup-dup,\r\n林小美,123,\r\n';
+    await p.setInputFiles('input[type=file][accept*=csv]', { name: '名單.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+    await p.waitForSelector('dialog:has-text("讀到")');
+    await expect(p.locator('dialog').textContent()).resolves.toContain('3 位');
+    await expect(p.locator('dialog').textContent()).resolves.toContain('重複');
+    await expect(p.locator('dialog').textContent()).resolves.toContain('自動產生');
+    await shot(p, '08a-csv-import');
+    await p.click('dialog button:has-text("匯入")');
+    await p.waitForSelector('text=共 3 位');
+    await expect(p.locator('.recipient-row input[placeholder^="備註"] >> nth=0').inputValue()).resolves.toBe('財務部, NB-0123');
+    await expect(p.locator('.recipient-row .pw-cell input >> nth=1').inputValue()).resolves.toBe('my-pass-2026');
+    expect(await p.locator('.recipient-row button:has-text("複製")').count()).toBe(3);
+    await p.click('.recipient-row >> nth=2 >> button[title="移除"]'); // drop 林小美
     await shot(p, '08-create-recipients');
     await p.click('button:has-text("確認並產生")');
     await shot(p, '09-create-confirm');

@@ -66,6 +66,8 @@ export interface FileEntry {
 export interface Manifest {
   title: string;
   recipient: string;
+  /** free text from the sender (department, laptop name…), usable in the watermark as {備註} */
+  note?: string;
   batchId: string;
   createdAt: string;
   policy: Policy;
@@ -98,6 +100,7 @@ export interface InputFile {
 export interface BuildOptions {
   title: string;
   recipient: string;
+  note?: string;
   batchId: string;
   mode: VaultMode;
   server: string | null;
@@ -155,6 +158,7 @@ export async function buildVault(
   const manifest: Manifest = {
     title: o.title,
     recipient: o.recipient,
+    note: o.note || undefined,
     batchId: o.batchId,
     createdAt: new Date().toISOString(),
     policy: o.policy,

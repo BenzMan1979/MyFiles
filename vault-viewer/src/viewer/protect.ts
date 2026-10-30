@@ -3,11 +3,45 @@
 
 import type { Protection } from '../core/format';
 
-export function watermarkText(p: Protection, recipient: string, openedAt: Date): string {
+export interface WatermarkContext {
+  recipient: string;
+  note?: string;
+  openedAt: Date;
+  /** address the server saw; only known for online vaults */
+  ip?: string | null;
+  country?: string | null;
+  /** short code that the server also logs, so a screenshot can be traced to one opening */
+  tag?: string;
+  device?: string;
+}
+
+/** Browser and OS only: a web page cannot read the computer's name or hardware. */
+export function describeDevice(ua = navigator.userAgent): string {
+  const os = /Windows/.test(ua) ? 'Windows' : /iPhone|iPad/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Mac OS X/.test(ua) ? 'macOS' : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : '';
+  // Edge and Opera also say "Chrome", so look for the more specific names first.
+  const found = (['Edg', 'OPR', 'Firefox', 'Chrome', 'Version'] as const).map((k) => [k, ua.match(new RegExp(`${k}\\/(\\d+)`))] as const).find(([, m]) => m);
+  const names = { Edg: 'Edge', OPR: 'Opera', Version: 'Safari' } as Record<string, string>;
+  const name = found ? names[found[0]] ?? found[0] : '';
+  const m = found?.[1] ?? null;
+  return [name && `${name} ${m![1]}`, os].filter(Boolean).join(' / ') || '未知裝置';
+}
+
+export function watermarkText(p: Protection, c: WatermarkContext): string {
   const pad = (n: number) => String(n).padStart(2, '0');
-  const date = `${openedAt.getFullYear()}/${pad(openedAt.getMonth() + 1)}/${pad(openedAt.getDate())}`;
-  const time = `${date} ${pad(openedAt.getHours())}:${pad(openedAt.getMinutes())}`;
-  return p.watermark.text.replace(/\{收件人\}/g, recipient).replace(/\{時間\}/g, time).replace(/\{日期\}/g, date);
+  const d = c.openedAt;
+  const date = `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`;
+  const time = `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const values: Record<string, string> = {
+    收件人: c.recipient,
+    備註: c.note ?? '',
+    時間: time,
+    日期: date,
+    IP: c.ip || '—',
+    地區: c.country || '—',
+    裝置: c.device ?? describeDevice(),
+    編號: c.tag ?? '',
+  };
+  return p.watermark.text.replace(/\{([^{}]+)\}/g, (all, k: string) => (k in values ? values[k] : all)).replace(/\s{3,}/g, '  ').trim();
 }
 
 export function watermarkBackground(text: string, opacity: number, dark: boolean): string {

@@ -8,10 +8,10 @@ let hub: Hub;
 const authKey = randomBytes(32);
 const share = randomBytes(32);
 
-async function call(method: string, path: string, body?: unknown, token?: string) {
+async function call(method: string, path: string, body?: unknown, token?: string, extra: Record<string, string> = {}) {
   const res = await hub.handle(new Request(`https://x.test${path}`, {
     method,
-    headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...extra },
     body: body === undefined ? undefined : JSON.stringify(body),
   }));
   return { status: res.status, body: (await res.json()) as any };
@@ -26,10 +26,10 @@ async function register(policy: object, id = 'v1') {
   return call('POST', '/api/admin/vaults', { vaults: [{ id, batchId: 'b', title: 'T', recipient: '小明', authKey: toB64(authKey), share: toB64(share), policy }] }, t);
 }
 
-async function open(key = authKey, session?: string, id = 'v1') {
+async function open(key = authKey, session?: string, id = 'v1', extra: { tag?: string; headers?: Record<string, string> } = {}) {
   const c = await call('POST', '/api/open/challenge', { vaultId: id });
   const proof = toB64(await hmac(key, openProofMessage(id, c.body.nonce)));
-  return call('POST', '/api/open', { vaultId: id, nonce: c.body.nonce, proof, session });
+  return call('POST', '/api/open', { vaultId: id, nonce: c.body.nonce, proof, session, tag: extra.tag }, undefined, extra.headers);
 }
 
 beforeEach(() => {
@@ -136,5 +136,18 @@ describe('hub', () => {
     expect((await call('POST', '/api/open', { vaultId: 'v1', nonce: c.body.nonce, proof })).status).toBe(200);
     expect((await call('POST', '/api/open', { vaultId: 'v1', nonce: c.body.nonce, proof })).body.code).toBe('bad_nonce');
     expect((await register({})).status).toBe(409);
+  });
+
+  it('tells the viewer which address it connected from, and logs the watermark code', async () => {
+    await register({ sessionMinutes: 30 });
+    const a = await open(authKey, undefined, 'v1', { tag: 'A7K2Q9', headers: { 'x-vv-ip': '203.0.113.8', 'x-vv-country': 'TW' } });
+    expect(a.body.client).toEqual({ ip: '203.0.113.8', country: 'TW' });
+    const none = await open(authKey, a.body.session);
+    expect(none.body.client).toEqual({ ip: null, country: null });
+    await open(authKey, a.body.session, 'v1', { tag: 'bad tag!' }); // ignored: not alphanumeric
+    const t = await admin();
+    const logs = (await call('GET', '/api/admin/vaults/v1/logs', undefined, t)).body.logs;
+    expect(logs.map((l: any) => l.tag)).toEqual([undefined, undefined, 'A7K2Q9']);
+    expect(logs[2]).toMatchObject({ ev: 'open', ip: '203.0.113.8', country: 'TW' });
   });
 });

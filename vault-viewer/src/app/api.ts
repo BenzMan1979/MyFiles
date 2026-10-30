@@ -167,6 +167,7 @@ export interface RemoteLog {
   t: string;
   ev: string;
   detail?: string;
+  tag?: string;
   ip?: string;
   country?: string;
   ua?: string;
