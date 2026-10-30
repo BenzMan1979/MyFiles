@@ -49,6 +49,8 @@
 ### 讓 Cloudflare 跟著 GitHub 自動更新
 
 用方法二（連結 Git）或方法三（Actions）部署後，之後只要更新 GitHub，Cloudflare 就會自動重新部署，不用手動更新；封存檔的資料存在 Cloudflare 上，重新部署不會被清掉。
+**已經用一鍵部署、Worker 名稱不是 `vault-viewer`，想改成跟著這個 repo 更新**：一鍵部署會把程式複製成你帳號下的另一個 repo，之後就只跟著那份複製更新，這個 repo 的更新不會過去。在 Cloudflare 的 Worker →「設定」→「建置」中斷連線、重新連接這個 repo，並設定：根目錄 `vault-viewer`；部署指令 `npm run deploy:ci`；建置變數 `VAULT_SETTINGS` ＝ `{"worker":{"name":"你原本的 Worker 名稱"}}`。名稱必須和原本的一樣，資料才會留在原處（改名字等於建立新的空 Worker）。Cloudflare 會提示「設定檔的名稱不一致」，這只是提醒，可以忽略；它之後若自動開 PR 要你改名稱，不用合併。
+
 想把「開發」和「正式」分開：在 Cloudflare 的專案設定把**生產分支**改成 `release`，開發時推 `main`（看 Pages 預覽），確定沒問題再把 `main` 合併到 `release`，Cloudflare 才會更新。
 
 ### 用 Cloudflare Access 保護打包器（選用）

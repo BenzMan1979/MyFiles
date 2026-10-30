@@ -184,6 +184,7 @@ function gitConnectHelp() {
       h('li', null, '在「變數（Variables）」加上 ', code('ADMIN_PASSWORD'), '（你的管理員密碼，至少 8 個字元，類型選「密碼／機密」）。'),
       h('li', null, '按部署，完成後複製畫面上的 ', code('https://….workers.dev'), ' 網址，回到下面第 3 步貼上。'),
     ),
+    h('p', { class: 'hint' }, '如果 Worker 的名稱和專案名稱不同（例如一鍵部署時改了名字），部署指令請改成 ', code('npm run deploy:ci'), '，並在建置變數的 ', code('VAULT_SETTINGS'), ' 加上 ', code('{"worker":{"name":"你的 Worker 名稱"}}'), '，否則會建出另一個空的 Worker。'),
     h('p', { class: 'hint' }, '想改名稱、限制或預設值：在同一個頁面的建置變數新增 ', code('VAULT_SETTINGS'), '（JSON，格式見專案說明的「參數」），重新部署就會生效。'),
   );
 }
