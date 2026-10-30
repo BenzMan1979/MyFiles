@@ -63,6 +63,23 @@ function serverCard(s: ServerProfile, rerender: () => void) {
   const loggedIn = !!tokens.get(s.id);
   const isDefault = servers.defaultId() === s.id;
   const status = h('span', { class: 'chip' }, '檢查中…');
+  // Changing or deleting a server's entry is for its admin: the buttons only appear once logged in.
+  // The one exception is a server that cannot be reached at all, so a dead entry can still be removed.
+  const guarded = h('span', { class: 'server-actions' });
+  guarded.style.display = loggedIn ? '' : 'none';
+  guarded.append(
+    h('button', { class: 'btn small', onclick: () => editDialog(s).then((ok) => ok && rerender()) }, '編輯'),
+    h('button', { class: 'btn small', onclick: () => passwordDialog(s) }, '更換管理員密碼'),
+    h('button', {
+      class: 'btn small danger',
+      onclick: async () => {
+        if (await confirmDialog('移除伺服器設定', `只會從這個瀏覽器移除「${s.name}」的設定，伺服器本身和上面的封存檔都不受影響。`, '移除', true)) {
+          servers.remove(s.id);
+          rerender();
+        }
+      },
+    }, '移除'),
+  );
   serverInfo(s.url)
     .then(() => {
       status.className = 'chip ok';
@@ -72,6 +89,7 @@ function serverCard(s: ServerProfile, rerender: () => void) {
       status.className = 'chip danger';
       status.textContent = '● 無法連線';
       status.title = e.message;
+      guarded.style.display = '';
     });
 
   return h('div', { class: 'server-card' },
@@ -85,17 +103,7 @@ function serverCard(s: ServerProfile, rerender: () => void) {
         ? h('button', { class: 'btn small', onclick: async () => { await api(s, '/api/admin/logout', { body: {}, auth: true }).catch(() => {}); tokens.clear(s.id); rerender(); } }, '登出')
         : h('button', { class: 'btn small primary', onclick: () => loginDialog(s).then((ok) => ok && rerender()) }, '登入'),
       !isDefault ? h('button', { class: 'btn small', onclick: () => { servers.setDefault(s.id); rerender(); } }, '設為預設') : null,
-      h('button', { class: 'btn small', onclick: () => editDialog(s).then((ok) => ok && rerender()) }, '編輯'),
-      h('button', { class: 'btn small', onclick: () => passwordDialog(s) }, '更換管理員密碼'),
-      h('button', {
-        class: 'btn small danger',
-        onclick: async () => {
-          if (await confirmDialog('移除伺服器設定', `只會從這個瀏覽器移除「${s.name}」的設定，伺服器本身和上面的封存檔都不受影響。`, '移除', true)) {
-            servers.remove(s.id);
-            rerender();
-          }
-        },
-      }, '移除'),
+      guarded,
     ),
   );
 }

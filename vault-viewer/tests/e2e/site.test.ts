@@ -37,6 +37,8 @@ describe('packer served by the server itself (one address for pages and API)', (
     await p.waitForSelector('.server-card');
     await expect(p.locator('.server-card').textContent()).resolves.toContain(site.url.replace('http://', ''));
     await expect(p.locator('.server-card').textContent()).resolves.toContain('管理員未登入');
+    // editing, removing and changing the password are for the server's admin: hidden until logged in
+    for (const t of ['編輯', '移除', '更換管理員密碼']) expect(await p.locator(`.server-card button:has-text("${t}")`).isVisible()).toBe(false);
     await p.click('.server-card button:has-text("登入")');
     await p.fill('dialog input[type=password]', 'wrong');
     await p.click('dialog button:has-text("登入")');
@@ -44,6 +46,7 @@ describe('packer served by the server itself (one address for pages and API)', (
     await p.fill('dialog input[type=password]', 'site-admin-pass');
     await p.click('dialog button:has-text("登入")');
     await p.waitForSelector('.server-card:has-text("管理員已登入")');
+    for (const t of ['編輯', '移除', '更換管理員密碼']) expect(await p.locator(`.server-card button:has-text("${t}")`).isVisible()).toBe(true);
     await p.screenshot({ path: join(OUT, 'own-server.png') });
     // the phone link is this very site
     await p.click('.app-nav a:has-text("使用說明")');
@@ -55,6 +58,16 @@ describe('packer served by the server itself (one address for pages and API)', (
     await p.reload();
     await p.waitForSelector('.wizard, .section.here');
     await expect(p.locator('.server-card').count()).resolves.toBe(0);
+    await p.close();
+  });
+
+  it('lets a server that cannot be reached be edited or removed even when logged out', async () => {
+    const p = await open(`${site.url}/#servers`);
+    await p.evaluate(() => localStorage.setItem('vault-packer:servers', JSON.stringify([{ id: 'dead01', name: '壞掉的', url: 'http://127.0.0.1:1' }])));
+    await p.reload();
+    const dead = p.locator('.server-card:has-text("壞掉的")');
+    await dead.locator('.chip:has-text("無法連線")').waitFor();
+    for (const t of ['編輯', '移除']) expect(await dead.locator(`button:has-text("${t}")`).isVisible()).toBe(true);
     await p.close();
   });
 
