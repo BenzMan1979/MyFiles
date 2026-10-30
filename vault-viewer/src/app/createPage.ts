@@ -330,7 +330,7 @@ function stepProtection(body: HTMLElement, rerender: () => void) {
   });
   const preview = h('div', { class: 'wm-preview' }, h('div', { class: 'wm-doc' }, h('p', null, '文件內容預覽'), h('p', { class: 'muted' }, '浮水印會斜斜地重複蓋在內容上方。')));
   const paint = () => {
-    preview.style.backgroundImage = pr.watermark.enabled ? watermarkBackground(watermarkText(pr, sample()), pr.watermark.opacity, false) : 'none';
+    preview.style.backgroundImage = pr.watermark.enabled ? watermarkBackground(watermarkText(pr, sample()), pr.watermark.opacity) : 'none';
   };
   wmText.addEventListener('input', () => {
     pr.watermark.text = wmText.value;

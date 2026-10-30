@@ -45,7 +45,7 @@ export interface Protection {
 export const DEFAULT_POLICY: Policy = { notBefore: null, expiresAt: null, maxOpens: null, maxFailures: 5, sessionMinutes: 30 };
 
 export const DEFAULT_PROTECTION: Protection = {
-  watermark: { enabled: true, text: '{收件人}  {時間}', opacity: 0.12 },
+  watermark: { enabled: true, text: '{收件人}  {時間}', opacity: 0.16 },
   allowCopy: false,
   allowPrint: false,
   allowDownload: false,

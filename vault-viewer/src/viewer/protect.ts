@@ -44,13 +44,17 @@ export function watermarkText(p: Protection, c: WatermarkContext): string {
   return p.watermark.text.replace(/\{([^{}]+)\}/g, (all, k: string) => (k in values ? values[k] : all)).replace(/\s{3,}/g, '  ').trim();
 }
 
-export function watermarkBackground(text: string, opacity: number, dark: boolean): string {
+/**
+ * Dark text with a light outline, so it shows on any background. PDF pages, images and documents
+ * are white even in dark mode, so a mark whose colour follows the theme would vanish on them.
+ */
+export function watermarkBackground(text: string, opacity: number): string {
   const esc = text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-  const fill = dark ? '255,255,255' : '0,0,0';
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="360" height="220">` +
     `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" transform="rotate(-28 180 110)" ` +
-    `font-family="sans-serif" font-size="18" fill="rgba(${fill},${opacity})">${esc}</text></svg>`;
+    `font-family="sans-serif" font-size="18" font-weight="600" paint-order="stroke" stroke-linejoin="round" stroke-width="3" ` +
+    `fill="rgba(0,0,0,${opacity})" stroke="rgba(255,255,255,${opacity})">${esc}</text></svg>`;
   return `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}")`;
 }
 

@@ -119,6 +119,64 @@ describe('viewer (offline)', () => {
   });
 });
 
+describe('watermark visibility', () => {
+  // Content such as a PDF page is white even in dark mode, so the mark must show on light and dark.
+  for (const scheme of ['dark', 'light'] as const) {
+    it(`is readable over white and dark backgrounds (${scheme} mode)`, async () => {
+      const { path, key } = await makeVault(`wm-${scheme}`, {});
+      const ctx = await browser.newContext({ colorScheme: scheme });
+      const page = await openPage(path, ctx);
+      await unlock(page, 'abcd-efgh-jkmn', key);
+      await page.waitForSelector('.tree');
+      await page.click('.file:has-text("備註.txt")');
+      const bg = await page.locator('.watermark').evaluate((el) => getComputedStyle(el).backgroundImage);
+      const result = await page.evaluate(async (css) => {
+        const url = css.slice(5, -2); // url("...")
+        const img = new Image();
+        await new Promise((ok, bad) => { img.onload = ok; img.onerror = bad; img.src = url; });
+        const measure = (fill: string) => {
+          const c = document.createElement('canvas');
+          c.width = 360; c.height = 220;
+          const g = c.getContext('2d')!;
+          g.fillStyle = fill; g.fillRect(0, 0, 360, 220);
+          const before = g.getImageData(0, 0, 360, 220).data;
+          g.drawImage(img, 0, 0);
+          const after = g.getImageData(0, 0, 360, 220).data;
+          let strong = 0;
+          for (let i = 0; i < after.length; i += 4) {
+            if (Math.abs(after[i] - before[i]) >= 14) strong++;
+          }
+          return strong;
+        };
+        return { onWhite: measure('#ffffff'), onDark: measure('#12151b'), onMid: measure('#808080') };
+      }, bg);
+      // a few hundred pixels of the mark must clearly differ from the background
+      expect(result.onWhite).toBeGreaterThan(150);
+      expect(result.onDark).toBeGreaterThan(150);
+      expect(result.onMid).toBeGreaterThan(150);
+      if (scheme === 'dark') {
+        await page.click('.file:has-text("報價單.pdf")');
+        await page.waitForSelector('.pdf-page canvas', { timeout: 30_000 });
+        await page.screenshot({ path: join(OUT, 'watermark-dark-pdf.png') });
+      }
+      await ctx.close();
+    });
+  }
+});
+
+describe('watermark tamper guard', () => {
+  it('locks the vault again when the watermark is removed', async () => {
+    const { path, key } = await makeVault('wm-tamper', {});
+    const page = await openPage(path);
+    await unlock(page, 'abcd-efgh-jkmn', key);
+    await page.waitForSelector('.tree');
+    await page.evaluate(() => document.querySelector('.watermark')!.remove());
+    await page.waitForSelector('text=浮水印被移除', { timeout: 5000 });
+    await page.waitForSelector('input[type=password]');
+    await page.close();
+  });
+});
+
 describe('viewer (online)', () => {
   it('opens through the server, counts opens and honours revocation', async () => {
     const share = randomBytes(32);

@@ -280,15 +280,18 @@ function showMain(payload: Payload, opened: OpenedVault) {
   const shell = h('div', { class: 'shell' }, topbar, h('div', { class: 'body' }, side, content));
   app.append(shell);
 
-  const paintWatermark = () => {
-    if (!prot.watermark.enabled) return;
-    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-    overlay.style.backgroundImage = watermarkBackground(watermarkText(prot, { recipient: manifest.recipient || '', note: manifest.note, openedAt, ip: opened.client?.ip, country: opened.client?.country, tag: opened.tag }), Math.max(0.04, Math.min(0.5, prot.watermark.opacity)), dark);
-  };
-  paintWatermark();
-  const mq = matchMedia('(prefers-color-scheme: dark)');
-  mq.addEventListener('change', paintWatermark);
-  cleanups.push(() => mq.removeEventListener('change', paintWatermark));
+  if (prot.watermark.enabled) {
+    const text = watermarkText(prot, { recipient: manifest.recipient || '', note: manifest.note, openedAt, ip: opened.client?.ip, country: opened.client?.country, tag: opened.tag });
+    overlay.style.backgroundImage = watermarkBackground(text, Math.max(0.04, Math.min(0.5, prot.watermark.opacity)));
+    // Deterrent: if the mark is removed or hidden (for example from developer tools), lock again.
+    const watch = setInterval(() => {
+      const cs = getComputedStyle(overlay);
+      if (!overlay.isConnected || cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) < 0.5 || !cs.backgroundImage.includes('svg') || overlay.offsetWidth < 50) {
+        lock('偵測到浮水印被移除或隱藏，已自動上鎖');
+      }
+    }, 1500);
+    cleanups.push(() => clearInterval(watch));
+  }
 
   const welcome = () => {
     clear(fileBar);
