@@ -41,17 +41,43 @@ export function sampleFiles(): InputFile[] {
   ];
 }
 
-export async function startHub(adminPassword = 'admin-pass-123'): Promise<{ url: string; server: Server }> {
-  const hub = new Hub(new MemoryStore(), { ADMIN_PASSWORD: adminPassword });
-  const server = createServer(async (req, res) => {
-    const chunks: Buffer[] = [];
-    for await (const c of req) chunks.push(c as Buffer);
-    const body = chunks.length ? Buffer.concat(chunks) : undefined;
-    const r = await hub.handle(new Request(`http://localhost${req.url}`, { method: req.method, headers: { ...(req.headers as Record<string, string>), 'x-vv-ip': req.socket.remoteAddress ?? '', 'x-vv-country': 'TW' }, body: req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS' ? undefined : body }));
-    res.writeHead(r.status, Object.fromEntries(r.headers));
-    res.end(Buffer.from(await r.arrayBuffer()));
-  });
+import { readFileSync } from 'node:fs';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+
+async function serveApi(hub: Hub, req: IncomingMessage, res: ServerResponse) {
+  const chunks: Buffer[] = [];
+  for await (const c of req) chunks.push(c as Buffer);
+  const body = chunks.length ? Buffer.concat(chunks) : undefined;
+  const noBody = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
+  // the real Worker adds these from Cloudflare's connection data
+  const headers = { ...(req.headers as Record<string, string>), 'x-vv-ip': req.socket.remoteAddress ?? '', 'x-vv-country': 'TW' };
+  const r = await hub.handle(new Request(`http://localhost${req.url}`, { method: req.method, headers, body: noBody ? undefined : body }));
+  res.writeHead(r.status, Object.fromEntries(r.headers));
+  res.end(Buffer.from(await r.arrayBuffer()));
+}
+
+async function listen(server: Server): Promise<string> {
   await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
-  const addr = server.address() as { port: number };
-  return { url: `http://127.0.0.1:${addr.port}`, server };
+  return `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+}
+
+/** The server API only, like a Worker without static pages. */
+export async function startHub(adminPassword = 'admin-pass-123', env: Record<string, string> = {}): Promise<{ url: string; server: Server }> {
+  const hub = new Hub(new MemoryStore(), { ADMIN_PASSWORD: adminPassword, ...env });
+  const server = createServer((req, res) => void serveApi(hub, req, res));
+  return { url: await listen(server), server };
+}
+
+/** Pages and API on one address, like the deployed Worker: /api/* is the server, the rest is dist/. */
+export async function startSite(adminPassword: string | undefined = 'admin-pass-123'): Promise<{ url: string; server: Server }> {
+  const hub = new Hub(new MemoryStore(), adminPassword ? { ADMIN_PASSWORD: adminPassword } : {});
+  const pages: Record<string, string> = { '/': 'dist/index.html', '/index.html': 'dist/index.html', '/open.html': 'dist/open.html' };
+  const server = createServer((req, res) => {
+    const path = (req.url ?? '/').split('?')[0];
+    if (path.startsWith('/api/')) return void serveApi(hub, req, res);
+    const file = pages[path];
+    if (!file) return void res.writeHead(404).end('not found');
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(readFileSync(file));
+  });
+  return { url: await listen(server), server };
 }

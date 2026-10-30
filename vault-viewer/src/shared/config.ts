@@ -1,7 +1,8 @@
-/** Where the hosted pages live (GitHub Pages). Used for the "open on phone" hint and the deploy button. */
-export const HOSTED_BASE = 'https://benzman1979.github.io/MyFiles/';
-export const HOSTED_OPEN_URL = `${HOSTED_BASE}open.html`;
-// The branch that holds the server code the deploy button copies.
-export const REPO_SERVER_URL = 'https://github.com/BenzMan1979/MyFiles/tree/main/vault-viewer/server';
-export const DEPLOY_BUTTON_URL = `https://deploy.workers.cloudflare.com/?url=${REPO_SERVER_URL}`;
-export const APP_NAME = '隨身密閱';
+import { deployButtonUrl, settings } from './settings';
+
+export const APP_NAME = settings.appName;
+/** Cloudflare's one-click deploy address for this project, or null when no repo is configured. */
+export const DEPLOY_BUTTON_URL = deployButtonUrl(settings);
+
+/** The viewer page that a server hosts next to its API (works on phones, no file needed on disk). */
+export const openPageOf = (serverUrl: string): string => `${serverUrl.replace(/\/+$/, '')}/open.html`;

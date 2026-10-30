@@ -7,10 +7,13 @@
     "dev": "vite",
     "build:viewer": "vite build --config vite.viewer.config.ts && node scripts/inline-viewer.mjs",
     "build:app": "vite build && node scripts/inline-app.mjs",
-    "build": "tsc --noEmit && npm run build:viewer && npm run build:app",
+    "build": "tsc --noEmit && tsc -p server --noEmit && npm run build:viewer && npm run build:app",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "npm run build && LANG=C.UTF-8 LC_ALL=C.UTF-8 E2E=1 vitest run"
+    "test:e2e": "npm run build && LANG=C.UTF-8 LC_ALL=C.UTF-8 E2E=1 vitest run",
+    "deploy": "wrangler deploy",
+    "dev:worker": "wrangler dev",
+    "deploy:ci": "node scripts/deploy-ci.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.3",
@@ -20,9 +23,11 @@
     "qrcode-generator": "^2.0.4"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261030.1",
     "@types/node": "^22.20.5",
     "typescript": "^5.9.3",
     "vite": "^5.4.21",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "wrangler": "^4.156.0"
   }
 }

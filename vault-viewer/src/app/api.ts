@@ -1,3 +1,5 @@
+import { openPageOf } from '../shared/config';
+
 // Server profiles (stored in this browser) and a small client for the vault server API.
 
 export interface ServerProfile {
@@ -82,6 +84,14 @@ export const tokens = {
     }
   },
 };
+
+/** Where to send a recipient whose device cannot open the HTML file: this site, else the default server. */
+export function phoneViewerUrl(serverUrl?: string | null): string | null {
+  if (serverUrl) return openPageOf(serverUrl);
+  if (location.protocol.startsWith('http')) return new URL('open.html', location.href).toString();
+  const d = servers.default();
+  return d ? openPageOf(d.url) : null;
+}
 
 /** Normalises what people paste: adds https://, strips paths and trailing slashes. */
 export function normaliseUrl(input: string): string | null {

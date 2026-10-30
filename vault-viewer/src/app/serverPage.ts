@@ -1,5 +1,6 @@
 import { randomId } from '../core/keytext';
-import { DEPLOY_BUTTON_URL } from '../shared/config';
+import { APP_NAME, DEPLOY_BUTTON_URL } from '../shared/config';
+import { settings } from '../shared/settings';
 import { clear, h } from '../shared/dom';
 import { api, ApiError, login, normaliseUrl, serverInfo, servers, tokens, type ServerProfile } from './api';
 import { confirmDialog, modal, section, toast } from './ui';
@@ -13,13 +14,43 @@ export function renderServers(root: HTMLElement, rerender: () => void) {
     ),
   );
 
+  // When this page is served by the vault server itself, there is nothing to set up: just log in.
+  const here = h('div');
+  const detect = !servers.list().some((s) => s.url === location.origin) && location.protocol.startsWith('http');
+  const wizardBox = h('div');
+  const showWizard = () => {
+    clear(wizardBox);
+    wizardBox.append(wizard(rerender));
+  };
+
   if (list.length) {
     const box = section('我的伺服器');
     for (const s of list) box.append(serverCard(s, rerender));
     box.append(h('button', { class: 'btn', onclick: () => openWizard(root, rerender) }, '＋ 新增另一台伺服器'));
-    root.append(box);
+    root.append(here, box);
   } else {
-    root.append(wizard(rerender));
+    root.append(here, wizardBox);
+    showWizard();
+  }
+
+  if (detect) {
+    serverInfo(location.origin)
+      .then((info) => {
+        const profile: ServerProfile = { id: randomId(6), name: '我的伺服器', url: location.origin };
+        clear(here);
+        here.append(
+          h('section', { class: 'card section here' },
+            h('h2', null, '✅ 這個網站本身就是你的伺服器'),
+            h('p', { class: 'muted' }, `你現在開啟的就是${APP_NAME}伺服器（${location.host}），不需要另外部署，登入後就能使用線上模式。`),
+            adminStep(profile, info.adminConfigured, rerender),
+          ),
+        );
+        if (!list.length) {
+          clear(wizardBox);
+          wizardBox.append(h('details', { class: 'more' }, h('summary', null, '要改用另一台伺服器？'), wizard(rerender)));
+        }
+      })
+      .catch(() => {});
   }
 }
 
@@ -142,7 +173,7 @@ async function passwordDialog(s: ServerProfile) {
 /** The step-by-step setup guide. */
 function wizard(done: () => void) {
   const name = h('input', { class: 'input', placeholder: '例如：我的伺服器', value: '我的伺服器' });
-  const url = h('input', { class: 'input mono', placeholder: 'https://vault-viewer-server.你的名稱.workers.dev' });
+  const url = h('input', { class: 'input mono', placeholder: `https://${settings.workerName}.你的名稱.workers.dev` });
   const result = h('div');
   const testBtn = h('button', { class: 'btn primary' }, '測試連線');
 
@@ -158,7 +189,7 @@ function wizard(done: () => void) {
     try {
       const info = await serverInfo(u);
       const profile: ServerProfile = { id: randomId(6), name: name.value.trim() || '我的伺服器', url: u };
-      result.append(h('p', { class: 'hint ok' }, '✓ 連線成功！這是一台隨身密閱伺服器。'));
+      result.append(h('p', { class: 'hint ok' }, `✓ 連線成功！這是一台${APP_NAME}伺服器。`));
       result.append(adminStep(profile, info.adminConfigured, done));
     } catch (e) {
       result.append(h('p', { class: 'error' }, (e as Error).message));
@@ -174,24 +205,29 @@ function wizard(done: () => void) {
   return h('div', { class: 'wizard' },
     step(1, '註冊 Cloudflare 免費帳號', [
       h('p', null, '打開 Cloudflare 註冊頁，用 Email 註冊並完成信箱驗證。選', h('strong', null, '免費方案（Free）'), '就夠用，不需要信用卡。'),
-      h('a', { class: 'btn', href: 'https://dash.cloudflare.com/sign-up', target: '_blank', rel: 'noopener' }, '開啟 Cloudflare 註冊頁 ↗'),
+      h('a', { class: 'btn', href: settings.links.cloudflareSignup, target: '_blank', rel: 'noopener' }, '開啟 Cloudflare 註冊頁 ↗'),
       h('p', { class: 'hint' }, '已經有帳號？直接到第 2 步。'),
     ]),
-    step(2, '一鍵部署伺服器', [
-      h('p', null, '按下面的按鈕，會在新分頁打開 Cloudflare 的部署頁：'),
-      h('ol', { class: 'steps' },
-        h('li', null, '登入 Cloudflare。'),
-        h('li', null, '畫面要求連結 ', h('strong', null, 'GitHub'), ' 時，照指示登入或免費註冊 GitHub（Cloudflare 會在你的 GitHub 建一份程式副本，之後可以自動更新）。'),
-        h('li', null, '看到 ', h('code', null, 'ADMIN_PASSWORD'), ' 欄位時，輸入你自己想要的', h('strong', null, '管理員密碼'), '（至少 8 個字元，請記下來）。'),
-        h('li', null, '其他欄位保持預設，按 ', h('strong', null, 'Create and deploy'), '（建立並部署）。'),
-        h('li', null, '等 1～2 分鐘部署完成，複製畫面上 ', h('code', null, 'https://….workers.dev'), ' 的網址。'),
-      ),
-      h('a', { class: 'btn primary', href: DEPLOY_BUTTON_URL, target: '_blank', rel: 'noopener' }, '☁️ 部署到 Cloudflare ↗'),
-      h('details', { class: 'more' },
-        h('summary', null, '找不到網址？'),
-        h('p', null, '到 Cloudflare 主控台左側選「Workers 和 Pages（Workers & Pages）」→ 點 ', h('code', null, 'vault-viewer-server'), ' → 右上角「造訪（Visit）」旁邊的網址就是。'),
-      ),
-    ]),
+    DEPLOY_BUTTON_URL
+      ? step(2, '一鍵部署伺服器', [
+          h('p', null, '按下面的按鈕，會在新分頁打開 Cloudflare 的部署頁：'),
+          h('ol', { class: 'steps' },
+            h('li', null, '登入 Cloudflare。'),
+            h('li', null, '畫面要求連結 ', h('strong', null, 'GitHub'), ' 時，照指示登入或免費註冊 GitHub（Cloudflare 會在你的 GitHub 建一份程式副本，之後可以自動更新）。'),
+            h('li', null, '看到 ', h('code', null, 'ADMIN_PASSWORD'), ' 欄位時，輸入你自己想要的', h('strong', null, '管理員密碼'), '（至少 8 個字元，請記下來）。'),
+            h('li', null, '其他欄位保持預設，按 ', h('strong', null, 'Create and deploy'), '（建立並部署）。'),
+            h('li', null, '等 1～2 分鐘部署完成，複製畫面上 ', h('code', null, 'https://….workers.dev'), ' 的網址。這個網址同時也是你自己的打包器網頁。'),
+          ),
+          h('a', { class: 'btn primary', href: DEPLOY_BUTTON_URL, target: '_blank', rel: 'noopener' }, '☁️ 部署到 Cloudflare ↗'),
+          h('details', { class: 'more' },
+            h('summary', null, '找不到網址？'),
+            h('p', null, '到 Cloudflare 主控台左側選「Workers 和 Pages（Workers & Pages）」→ 點 ', h('code', null, settings.workerName), ' → 右上角「造訪（Visit）」旁邊的網址就是。'),
+            h('p', null, h('a', { href: settings.links.cloudflareDashboard, target: '_blank', rel: 'noopener' }, '開啟 Cloudflare 主控台 ↗')),
+          ),
+        ])
+      : step(2, '取得伺服器網址', [
+          h('p', null, '這份打包器沒有設定一鍵部署的來源。請向提供這份打包器的人索取伺服器網址，直接到下一步貼上；或依專案說明自行部署一台。'),
+        ]),
     step(3, '連線並登入', [
       h('div', { class: 'field' }, h('label', { class: 'label' }, '幫這台伺服器取個名字'), name),
       h('div', { class: 'field' }, h('label', { class: 'label' }, '伺服器網址'), url, h('p', { class: 'hint' }, '貼上第 2 步複製的網址')),

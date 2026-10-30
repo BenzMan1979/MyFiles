@@ -45,6 +45,7 @@ select.input { padding-right: 28px; }
 .admin-step { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
 .admin-step .btn { margin-top: 8px; }
 details.more { margin-top: 12px; }
+.section.here { border-color: var(--ok); }
 details.more summary, details.faq summary { cursor: pointer; color: var(--accent); }
 details.faq { border-bottom: 1px solid var(--border); padding: 10px 0; }
 details.faq summary { color: var(--text); font-weight: 600; }

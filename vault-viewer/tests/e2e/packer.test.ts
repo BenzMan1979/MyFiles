@@ -53,7 +53,7 @@ describe('packer', () => {
     await shot(p, '01-home');
     await p.click('.app-nav a:has-text("伺服器設定")');
     await shot(p, '02-server-wizard');
-    await p.fill('input[placeholder^="https://vault-viewer-server"]', hub.url);
+    await p.fill('input[placeholder^="https://vault-viewer."]', hub.url);
     await p.click('button:has-text("測試連線")');
     await p.waitForSelector('text=連線成功');
     await p.fill('.admin-step input[type=password]', 'wrong-password');

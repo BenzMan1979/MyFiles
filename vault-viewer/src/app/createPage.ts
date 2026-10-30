@@ -5,13 +5,17 @@ import { generatePassword, keyFileContent, keyToText, randomId } from '../core/k
 import { extOf, formatSize, guessMime, kindOf } from '../core/mime';
 import { formatDateTime, h, saveBlob } from '../shared/dom';
 import { DENSITY_LABELS, describeDevice, watermarkBackground, watermarkStyle, watermarkText, WATERMARK_SIZE_RANGE } from '../viewer/protect';
-import { api, servers, tokens } from './api';
-import { decodeCsv, MAX_RECIPIENTS, MIN_PASSWORD, parseRecipients, templateCsv } from './csv';
+import { api, phoneViewerUrl, servers, tokens } from './api';
+import { decodeCsv, parseRecipients, templateCsv } from './csv';
+import { settings } from '../shared/settings';
 import { canPickFolder, downloadKeyCard, downloadSheet, downloadZip, safeName, saveToFolder, type BatchOutput } from './output';
 import { loginDialog } from './serverPage';
-import { confirmDialog, copyButton, field, fromLocalInput, modal, qrElement, section, toast, toggle } from './ui';
+import { confirmDialog, copyButton, field, fromLocalInput, modal, qrElement, section, toast, toggle, toLocalInput } from './ui';
 
-const SIZE_LIMIT = 300 * 1024 * 1024;
+const SIZE_LIMIT = settings.limits.maxTotalMB * 1024 * 1024;
+const MAX_RECIPIENTS = settings.limits.maxRecipients;
+const MIN_PASSWORD = settings.limits.minPasswordLength;
+const IMPORT_LIMITS = { maxRecipients: MAX_RECIPIENTS, minPassword: MIN_PASSWORD };
 
 interface Draft {
   files: { file: File; path: string }[];
@@ -31,18 +35,29 @@ interface Draft {
 }
 
 function newDraft(): Draft {
+  const d = settings.defaults;
+  const days = d.expiryDays;
+  const preset: Draft['expiryPreset'] = days === null ? 'none' : days === 7 || days === 30 || days === 90 ? (String(days) as '7' | '30' | '90') : 'custom';
   return {
     files: [],
     title: '',
     mode: 'online',
     serverId: servers.defaultId(),
     notBefore: '',
-    expiryPreset: '30',
-    expiryCustom: '',
+    expiryPreset: preset,
+    expiryCustom: preset === 'custom' ? toLocalInput(new Date(Date.now() + days! * 86400_000).toISOString()) : '',
     limitOpens: false,
     maxOpens: 5,
-    policy: { ...DEFAULT_POLICY },
-    protection: structuredClone(DEFAULT_PROTECTION),
+    policy: { ...DEFAULT_POLICY, maxFailures: d.maxFailures, sessionMinutes: d.sessionMinutes },
+    protection: {
+      ...structuredClone(DEFAULT_PROTECTION),
+      watermark: { ...d.watermark },
+      allowCopy: d.allowCopy,
+      allowPrint: d.allowPrint,
+      allowDownload: d.allowDownload,
+      idleLockMinutes: d.idleLockMinutes,
+      blurLockSeconds: d.blurLockSeconds,
+    },
     recipients: [{ name: '', password: generatePassword(), note: '' }],
     samePassword: false,
     sharedPassword: generatePassword(),
@@ -216,7 +231,7 @@ function stepFiles(body: HTMLElement, rerender: () => void) {
         h('div', { class: 'size-bar' }, h('div', { class: `size-fill ${total > SIZE_LIMIT ? 'over' : ''}`, style: `width:${pct}%` })),
         h('span', { class: 'muted small' }, `${formatSize(total)} ／ 建議上限 ${formatSize(SIZE_LIMIT)}`),
       ),
-      total > SIZE_LIMIT ? h('p', { class: 'note warn' }, '總大小超過 300MB，收件人開啟時可能很慢或開不起來。建議先壓縮影片，或分成幾份封存。') : null,
+      total > SIZE_LIMIT ? h('p', { class: 'note warn' }, `總大小超過 ${settings.limits.maxTotalMB}MB，收件人開啟時可能很慢或開不起來。建議先壓縮影片，或分成幾份封存。`) : null,
       h('div', { class: 'file-table' },
         ...sorted.map((f) => {
           const warn = fileWarning(f.path);
@@ -439,7 +454,7 @@ function stepRecipients(body: HTMLElement, rerender: () => void) {
     const f = csvInput.files?.[0];
     csvInput.value = '';
     if (!f) return;
-    const res = parseRecipients(decodeCsv(new Uint8Array(await f.arrayBuffer())));
+    const res = parseRecipients(decodeCsv(new Uint8Array(await f.arrayBuffer())), IMPORT_LIMITS);
     const existing = draft.recipients.filter((r) => r.name.trim());
     const lines: (HTMLElement | null)[] = [
       h('p', null, `讀到 `, h('strong', null, `${res.recipients.length} 位`), ` 收件人`, res.skipped ? `，略過 ${res.skipped} 列` : '', '。'),
@@ -605,7 +620,7 @@ async function generate(onProgress: (done: number, all: number, label: string) =
     await api(server, '/api/admin/vaults', { body: { vaults: registrations }, auth: true });
   }
   onProgress(n, n, '完成');
-  return { title, mode: draft.mode, serverName: server?.name ?? null, createdAt: new Date().toISOString(), expiresAt: exp, maxOpens: policy.maxOpens, items };
+  return { title, mode: draft.mode, serverName: server?.name ?? null, createdAt: new Date().toISOString(), expiresAt: exp, maxOpens: policy.maxOpens, phoneUrl: phoneViewerUrl(server?.url), items };
 }
 
 // ---------- result ----------

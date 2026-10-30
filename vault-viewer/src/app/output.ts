@@ -2,7 +2,7 @@
 
 import { Zip, ZipPassThrough } from 'fflate';
 import { formatDateTime, saveBlob } from '../shared/dom';
-import { APP_NAME, HOSTED_OPEN_URL } from '../shared/config';
+import { APP_NAME } from '../shared/config';
 import { qrSvg } from './ui';
 
 export interface RecipientOutput {
@@ -21,6 +21,8 @@ export interface BatchOutput {
   createdAt: string;
   expiresAt: string | null;
   maxOpens: number | null;
+  /** the viewer page for phones, if a server hosts one */
+  phoneUrl: string | null;
   items: RecipientOutput[];
 }
 
@@ -47,7 +49,7 @@ export function keyCardHtml(b: BatchOutput, it: RecipientOutput): string {
 <li>輸入發送者另外給你的<strong>密碼</strong>。</li>
 <li>貼上上面的<strong>金鑰文字</strong>，或選擇 .key 金鑰檔。</li>
 ${b.mode === 'online' ? '<li>開啟時需要連上網路（由伺服器驗證）。</li>' : ''}
-<li>手機打不開時，請改用 <a href="${HOSTED_OPEN_URL}">${HOSTED_OPEN_URL}</a> 選擇封存檔。</li></ol>
+${b.phoneUrl ? `<li>手機打不開時，請改用 <a href="${esc(b.phoneUrl)}">${esc(b.phoneUrl)}</a> 選擇封存檔。</li>` : ''}</ol>
 <p class="warn">請妥善保管這張金鑰卡，不要和封存檔、密碼放在同一個地方。</p>
 </body></html>`;
 }

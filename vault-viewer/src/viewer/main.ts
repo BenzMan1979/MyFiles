@@ -2,7 +2,7 @@ import './style.css';
 import { textToKey } from '../core/keytext';
 import { ChunkReader, readFile, readPayloadFromDocument, readPayloadFromHtml, type FileEntry, type Payload } from '../core/format';
 import { formatSize } from '../core/mime';
-import { APP_NAME, HOSTED_OPEN_URL } from '../shared/config';
+import { APP_NAME, openPageOf } from '../shared/config';
 import { clear, formatDateTime, h, saveBlob } from '../shared/dom';
 import { installAutoLock, installGuards, watermarkBackground, watermarkText } from './protect';
 import { iconFor, renderPreview } from './preview';
@@ -138,7 +138,7 @@ function showUnlock(payload: Payload, notice?: string) {
     error,
     submit,
     h('p', { class: 'foot muted' }, '所有解密都在這台裝置上進行。', header.mode === 'online' ? '開啟時需要連上網路。' : ''),
-    embedded ? h('p', { class: 'foot muted small' }, '在 iPhone／手機打不開？請改用 ', h('a', { href: HOSTED_OPEN_URL, target: '_blank', rel: 'noopener' }, '線上檢視頁'), ' 選擇這個檔案。') : null,
+    embedded && header.server ? h('p', { class: 'foot muted small' }, '在 iPhone／手機打不開？請改用 ', h('a', { href: openPageOf(header.server), target: '_blank', rel: 'noopener' }, '線上檢視頁'), ' 選擇這個檔案。') : null,
   );
   if (locked) {
     error.textContent = '密碼錯誤次數過多，這份封存檔在此裝置上已鎖定';

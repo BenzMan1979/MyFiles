@@ -1,0 +1,42 @@
+{
+  "_說明": "複製成 settings.json（本機建置用，不會被提交），或把整段 JSON 貼到 GitHub 的 Variables → VAULT_SETTINGS（或 Cloudflare 的建置變數）。每個欄位都可以省略，省略就用預設值。這份範例的值就是預設值。其他可用項目見 README「參數」一節。",
+  "app": {
+    "appName": "隨身密閱",
+    "workerName": "vault-viewer",
+    "links": {
+      "deployButtonBase": "https://deploy.workers.cloudflare.com/?url=",
+      "cloudflareSignup": "https://dash.cloudflare.com/sign-up",
+      "cloudflareDashboard": "https://dash.cloudflare.com/"
+    },
+    "limits": {
+      "maxRecipients": 500,
+      "maxTotalMB": 300,
+      "minPasswordLength": 6
+    },
+    "defaults": {
+      "expiryDays": 30,
+      "maxFailures": 5,
+      "sessionMinutes": 30,
+      "idleLockMinutes": 10,
+      "blurLockSeconds": 0,
+      "allowCopy": false,
+      "allowPrint": false,
+      "allowDownload": false,
+      "watermark": {
+        "enabled": true,
+        "text": "{收件人}  {時間}",
+        "opacity": 0.16,
+        "size": 18,
+        "density": 3
+      }
+    }
+  },
+  "server": {
+    "ADMIN_SESSION_HOURS": 12,
+    "ADMIN_MAX_FAILURES": 5,
+    "ADMIN_LOCK_MINUTES": 15
+  },
+  "worker": {
+    "name": "vault-viewer"
+  }
+}

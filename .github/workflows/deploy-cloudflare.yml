@@ -1,0 +1,65 @@
+name: Deploy to Cloudflare
+
+# GitHub is only the deployer here: this builds the packer and phone viewer and ships them, together
+# with the vault server, to Cloudflare as one Worker. Every setting comes from outside the code:
+#
+#   Secrets    CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID   (required; without them this job is skipped)
+#              VAULT_ADMIN_PASSWORD                            (optional: admin password set at deploy time)
+#   Variables  VAULT_SETTINGS   JSON with "app", "server", "worker" parts; see vault-viewer/settings.example.json
+#
+# It works the same in a private repo or a fork, and links (such as the one-click deploy address)
+# follow whichever repo is building. Run it by hand from the Actions tab, or let a push to main do it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'vault-viewer/**'
+      - '.github/workflows/deploy-cloudflare.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vault-viewer
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VAULT_ADMIN_PASSWORD: ${{ secrets.VAULT_ADMIN_PASSWORD }}
+      VAULT_SETTINGS: ${{ vars.VAULT_SETTINGS }}
+    steps:
+      - name: Check secrets
+        id: check
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Cloudflare secrets not set; skipping deploy."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.check.outputs.skip != 'true'
+        uses: actions/checkout@v4
+      - if: steps.check.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: vault-viewer/package-lock.json
+      - if: steps.check.outputs.skip != 'true'
+        run: npm ci
+      - name: Test
+        if: steps.check.outputs.skip != 'true'
+        run: npm test
+      - name: Build
+        if: steps.check.outputs.skip != 'true'
+        run: npm run build
+      - name: Deploy
+        if: steps.check.outputs.skip != 'true'
+        run: npm run deploy:ci

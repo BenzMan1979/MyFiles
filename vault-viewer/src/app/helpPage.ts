@@ -1,4 +1,4 @@
-import { HOSTED_OPEN_URL } from '../shared/config';
+import { phoneViewerUrl } from './api';
 import { h } from '../shared/dom';
 import { section } from './ui';
 
@@ -11,7 +11,10 @@ export function renderHelp(root: HTMLElement) {
       h('ol', { class: 'steps' },
         h('li', null, '電腦：雙擊 .vault.html，用 Chrome、Edge、Firefox 或 Safari 打開。'),
         h('li', null, '輸入密碼，貼上金鑰文字或選擇 .key 金鑰檔，按「解鎖」。'),
-        h('li', null, '手機：請到 ', h('a', { href: HOSTED_OPEN_URL, target: '_blank', rel: 'noopener' }, HOSTED_OPEN_URL), ' 選擇封存檔（金鑰可以用相機掃描金鑰卡上的 QR Code 取得文字再貼上）。'),
+        (() => {
+          const u = phoneViewerUrl();
+          return h('li', null, '手機：請到 ', u ? h('a', { href: u, target: '_blank', rel: 'noopener' }, u) : '伺服器上的 open.html 頁面', ' 選擇封存檔（金鑰可以用相機掃描金鑰卡上的 QR Code 取得文字再貼上）。');
+        })(),
       ),
     ),
     section('PowerPoint 簡報怎麼處理',

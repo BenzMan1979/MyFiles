@@ -11,8 +11,26 @@ export interface Store {
   list<T>(options: { prefix: string; limit?: number; reverse?: boolean }): Promise<Map<string, T>>;
 }
 
+/**
+ * Everything here is set from outside (Worker secrets and variables), never in code. Numbers may
+ * arrive as strings, because that is how the Cloudflare dashboard and `wrangler --var` pass them.
+ */
 export interface Env {
+  /** secret: admin password; if unset, the first visitor can set one */
   ADMIN_PASSWORD?: string;
+  /** hours an admin login stays valid (default 12) */
+  ADMIN_SESSION_HOURS?: string | number;
+  /** wrong admin passwords before the login is locked (default 5) */
+  ADMIN_MAX_FAILURES?: string | number;
+  /** minutes the admin login stays locked (default 15) */
+  ADMIN_LOCK_MINUTES?: string | number;
+  /** comma-separated websites allowed to call the admin API from a browser; empty = any (default) */
+  ADMIN_ORIGINS?: string;
+}
+
+function envInt(v: string | number | undefined, fallback: number, min: number, max: number): number {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
 }
 
 export interface VaultPolicy {
@@ -51,9 +69,6 @@ export interface LogEntry {
 }
 
 const NONCE_MS = 2 * 60 * 1000;
-const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
-const ADMIN_MAX_FAILURES = 5;
-const ADMIN_LOCK_MS = 15 * 60 * 1000;
 // Workers' free plan allows ~10 ms CPU per request, so the admin hash stays light; brute force
 // is stopped by the login lockout instead.
 const PBKDF2_ITERATIONS = 5000;
@@ -138,7 +153,34 @@ export class Hub {
     private now: () => number = Date.now,
   ) {}
 
+  private get sessionMs() {
+    return envInt(this.env.ADMIN_SESSION_HOURS, 12, 1, 24 * 30) * 3600_000;
+  }
+  private get maxAdminFailures() {
+    return envInt(this.env.ADMIN_MAX_FAILURES, 5, 1, 1000);
+  }
+  private get adminLockMs() {
+    return envInt(this.env.ADMIN_LOCK_MINUTES, 15, 1, 24 * 60) * 60_000;
+  }
+  private get adminOrigins(): string[] {
+    return (this.env.ADMIN_ORIGINS ?? '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean);
+  }
+
   async handle(req: Request): Promise<Response> {
+    const res = await this.respond(req);
+    // Opening a vault must work from any page (a vault file on disk has the origin "null"), but the
+    // admin API can be limited to the sites that are meant to use it.
+    const origins = this.adminOrigins;
+    if (!origins.length || !new URL(req.url).pathname.startsWith('/api/admin/')) return res;
+    const headers = new Headers(res.headers);
+    const origin = req.headers.get('origin');
+    headers.delete('access-control-allow-origin');
+    headers.append('vary', 'origin');
+    if (origin && origins.includes(origin)) headers.set('access-control-allow-origin', origin);
+    return new Response(res.body, { status: res.status, headers });
+  }
+
+  private async respond(req: Request): Promise<Response> {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     try {
       return await this.route(req);
@@ -318,9 +360,9 @@ export class Hub {
     }
     if (!(await this.verifyPassword(b.password))) {
       lock.failures += 1;
-      if (lock.failures >= ADMIN_MAX_FAILURES) {
+      if (lock.failures >= this.maxAdminFailures) {
         lock.failures = 0;
-        lock.until = now + ADMIN_LOCK_MS;
+        lock.until = now + this.adminLockMs;
       }
       await this.store.put('admin:lock', lock);
       return fail(401, 'bad_password', '管理員密碼不正確');
@@ -331,7 +373,7 @@ export class Hub {
 
   private async issueAdminToken() {
     const token = randomToken();
-    const expires = this.now() + ADMIN_SESSION_MS;
+    const expires = this.now() + this.sessionMs;
     await this.store.put(`admin:sess:${token}`, expires);
     return json({ ok: true, token, expiresAt: new Date(expires).toISOString() });
   }

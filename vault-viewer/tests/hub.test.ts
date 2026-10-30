@@ -150,4 +150,39 @@ describe('hub', () => {
     expect(logs.map((l: any) => l.tag)).toEqual([undefined, undefined, 'A7K2Q9']);
     expect(logs[2]).toMatchObject({ ev: 'open', ip: '203.0.113.8', country: 'TW' });
   });
+
+  it('takes admin session, lockout and origin limits from Worker variables', async () => {
+    hub = new Hub(new MemoryStore(), { ADMIN_PASSWORD: 'admin-pass', ADMIN_MAX_FAILURES: '2', ADMIN_LOCK_MINUTES: 1, ADMIN_SESSION_HOURS: '1', ADMIN_ORIGINS: 'https://vault.example.com/, https://other.example.com' }, () => now);
+    // two wrong passwords lock the login, and the lock lasts one minute
+    await call('POST', '/api/admin/login', { password: 'nope' });
+    await call('POST', '/api/admin/login', { password: 'nope' });
+    expect((await call('POST', '/api/admin/login', { password: 'admin-pass' })).status).toBe(429);
+    now += 61_000;
+    const t = (await call('POST', '/api/admin/login', { password: 'admin-pass' })).body.token;
+    expect((await call('GET', '/api/admin/vaults', undefined, t)).status).toBe(200);
+    // the login stays valid for one hour
+    now += 59 * 60_000;
+    expect((await call('GET', '/api/admin/vaults', undefined, t)).status).toBe(200);
+    now += 2 * 60_000;
+    expect((await call('GET', '/api/admin/vaults', undefined, t)).status).toBe(401);
+  });
+
+  it('limits browser access to the admin API to the listed websites only', async () => {
+    hub = new Hub(new MemoryStore(), { ADMIN_PASSWORD: 'admin-pass', ADMIN_ORIGINS: 'https://vault.example.com' }, () => now);
+    const withOrigin = (path: string, origin: string) =>
+      hub.handle(new Request(`https://x.test${path}`, { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify({ password: 'x' }) }));
+    expect((await withOrigin('/api/admin/login', 'https://vault.example.com')).headers.get('access-control-allow-origin')).toBe('https://vault.example.com');
+    expect((await withOrigin('/api/admin/login', 'https://evil.example.com')).headers.get('access-control-allow-origin')).toBeNull();
+    // opening a vault (and the info check) stay open to every origin, including a vault file on disk
+    expect((await withOrigin('/api/open/challenge', 'null')).headers.get('access-control-allow-origin')).toBe('*');
+    const pre = await hub.handle(new Request('https://x.test/api/admin/vaults', { method: 'OPTIONS', headers: { origin: 'https://evil.example.com' } }));
+    expect(pre.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('ignores nonsense values and keeps the defaults', async () => {
+    hub = new Hub(new MemoryStore(), { ADMIN_PASSWORD: 'admin-pass', ADMIN_MAX_FAILURES: 'lots', ADMIN_LOCK_MINUTES: '', ADMIN_SESSION_HOURS: undefined }, () => now);
+    for (let i = 0; i < 4; i++) await call('POST', '/api/admin/login', { password: 'nope' });
+    expect((await call('POST', '/api/admin/login', { password: 'admin-pass' })).status).toBe(200); // still 5 tries
+  });
 });
+

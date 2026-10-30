@@ -3,6 +3,8 @@ import { Hub as HubLogic, type Env as HubEnv, type Store } from './hub';
 
 interface Env extends HubEnv {
   HUB: DurableObjectNamespace<Hub>;
+  /** The packer and phone viewer pages (absent when the Worker is deployed without a build). */
+  ASSETS?: Fetcher;
 }
 
 /** The single Durable Object that owns every vault record; requests are processed one at a time. */
@@ -23,6 +25,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) {
+      if (env.ASSETS) return env.ASSETS.fetch(request);
       return new Response('隨身密閱伺服器運作中。請在「打包＋管理」頁面貼上這個網址。', {
         headers: { 'content-type': 'text/plain; charset=utf-8', 'access-control-allow-origin': '*' },
       });

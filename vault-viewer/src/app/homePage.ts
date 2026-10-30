@@ -1,6 +1,6 @@
-import { APP_NAME, HOSTED_OPEN_URL } from '../shared/config';
+import { APP_NAME } from '../shared/config';
 import { h } from '../shared/dom';
-import { servers, tokens } from './api';
+import { phoneViewerUrl, servers, tokens } from './api';
 import { section } from './ui';
 
 export function renderHome(root: HTMLElement) {
@@ -34,7 +34,11 @@ export function renderHome(root: HTMLElement) {
         h('li', null, '對方雙擊封存檔，用瀏覽器打開，輸入密碼和金鑰就能看到左邊檔案列表、右邊內容。'),
         h('li', null, '線上模式每次開啟都會問你的伺服器：沒過期、還有次數、沒被收回才放行。'),
       ),
-      h('p', { class: 'hint' }, '手機（特別是 iPhone）無法直接開啟 HTML 檔，請收件人改用 ', h('a', { href: HOSTED_OPEN_URL, target: '_blank', rel: 'noopener' }, '線上檢視頁'), ' 選擇封存檔，解密一樣只在手機上進行。'),
+      (() => {
+        const u = phoneViewerUrl();
+        return h('p', { class: 'hint' }, '手機（特別是 iPhone）無法直接開啟 HTML 檔，請收件人改用',
+          u ? h('a', { href: u, target: '_blank', rel: 'noopener' }, '線上檢視頁') : '線上檢視頁（設定好伺服器後就有）', '選擇封存檔，解密一樣只在手機上進行。');
+      })(),
     ),
     location.protocol.startsWith('http')
       ? section('離線使用打包器',

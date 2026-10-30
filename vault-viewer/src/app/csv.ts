@@ -13,8 +13,12 @@ export interface ImportResult {
   skipped: number;
 }
 
-export const MAX_RECIPIENTS = 500;
-export const MIN_PASSWORD = 6;
+export interface ImportLimits {
+  maxRecipients: number;
+  minPassword: number;
+}
+
+export const DEFAULT_IMPORT_LIMITS: ImportLimits = { maxRecipients: 500, minPassword: 6 };
 
 /** Excel on Traditional Chinese Windows saves plain "CSV" as Big5, so UTF-8 is tried first and Big5 is the fallback. */
 export function decodeCsv(bytes: Uint8Array): string {
@@ -71,7 +75,7 @@ const NAME_KEYS = ['名稱', '姓名', '名字', '收件人', 'name', 'recipient
 const PASSWORD_KEYS = ['密碼', 'password', 'pw', 'pass'];
 const NOTE_KEYS = ['備註', '電腦名稱', '電腦', '裝置', '部門', 'note', 'notes', 'device'];
 
-export function parseRecipients(text: string): ImportResult {
+export function parseRecipients(text: string, limits: ImportLimits = DEFAULT_IMPORT_LIMITS): ImportResult {
   const rows = parseCsv(text);
   const warnings: string[] = [];
   const recipients: ImportedRecipient[] = [];
@@ -106,15 +110,15 @@ export function parseRecipients(text: string): ImportResult {
       skipped++;
       continue;
     }
-    if (recipients.length >= MAX_RECIPIENTS) {
-      warnings.push(`一次最多 ${MAX_RECIPIENTS} 位收件人，第 ${line} 列之後都已略過`);
+    if (recipients.length >= limits.maxRecipients) {
+      warnings.push(`一次最多 ${limits.maxRecipients} 位收件人，第 ${line} 列之後都已略過`);
       skipped += rows.length - i;
       break;
     }
     seen.add(name);
     let password = cell(col.password);
-    if (password && password.length < MIN_PASSWORD) {
-      warnings.push(`第 ${line} 列「${name}」的密碼少於 ${MIN_PASSWORD} 個字元，已改為自動產生`);
+    if (password && password.length < limits.minPassword) {
+      warnings.push(`第 ${line} 列「${name}」的密碼少於 ${limits.minPassword} 個字元，已改為自動產生`);
       password = '';
     }
     recipients.push({ name, password, note: cell(col.note).slice(0, 100) });
