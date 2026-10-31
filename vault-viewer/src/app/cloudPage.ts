@@ -96,6 +96,9 @@ function profileCard(server: ServerProfile, p: CloudProfile, redirectUri: string
     h('div', { class: 'server-main' },
       h('div', null, TYPE_ICON[p.type] ?? '☁️', ' ', h('strong', null, p.name), h('span', { class: 'chip', style: 'margin-left:8px' }, p.typeLabel), p.isDefault ? h('span', { class: 'chip ok', style: 'margin-left:6px' }, '預設') : null),
       p.account ? h('div', { class: 'muted small' }, p.account) : null,
+      p.type === 'gdrive' && p.config.folderId && p.status === 'ready'
+        ? h('div', { class: 'small' }, h('a', { href: `https://drive.google.com/drive/folders/${encodeURIComponent(p.config.folderId)}`, target: '_blank', rel: 'noopener' }, `📂 在 Google 雲端硬碟開啟「${p.config.folderName || '隨身密閱'}」資料夾 ↗`))
+        : null,
       h('div', { class: 'chips', style: 'margin-top:6px' }, status, h('span', { class: 'chip' }, `${p.vaults} 份封存檔`)),
     ),
     h('div', { class: 'server-actions' },
@@ -288,19 +291,32 @@ async function googleDialog(server: ServerProfile, redirectUri: string, p?: Clou
   const secret = input('', { type: 'password', class: 'input mono', autocomplete: 'new-password', placeholder: p?.secretsSet.clientSecret ? '（不變）' : 'GOCSPX-…' });
   const err = h('p', { class: 'error' });
   const status = h('p', { class: 'hint' });
+  const site = new URL(redirectUri).origin;
+  const domain = mainDomain(new URL(redirectUri).hostname);
+  const copyRow = (label: string, value: string) =>
+    h('div', { class: 'copy-line', style: 'margin:4px 0' }, h('span', { class: 'muted small', style: 'min-width:9em' }, label), h('span', { class: 'mono' }, value), copyButton(() => value));
   const steps = h('details', { class: 'more', open: !p },
-    h('summary', null, '第一次設定：在 Google Cloud 建立自己的 OAuth 用戶端（約 5 分鐘，只要做一次）'),
+    h('summary', null, '第一次設定：在 Google Cloud 建立自己的 OAuth 用戶端（約 10 分鐘，只要做一次，免費）'),
+    h('p', { class: 'hint' }, '用你要存放檔案的那個 Google 帳號登入 Google Cloud。畫面上的名稱以中文介面為準，英文介面附在括號裡。'),
     h('ol', { class: 'steps' },
-      h('li', null, '打開 ', ext('https://console.cloud.google.com/projectcreate', 'Google Cloud 建立專案'), '，用你要存放檔案的 Google 帳號登入，專案名稱隨意（例如 vault-viewer），建立。'),
-      h('li', null, '打開 ', ext('https://console.cloud.google.com/apis/library/drive.googleapis.com', 'Google Drive API'), '，確認上方選的是剛建立的專案，按「啟用」。'),
-      h('li', null, '打開 ', ext('https://console.cloud.google.com/auth/overview', 'Google Auth Platform'), ' →「開始」：應用程式名稱填 ', h('code', null, '隨身密閱'), '、填你的 Email，目標對象選「外部」，完成。'),
-      h('li', null, h('strong', null, '很重要：'), '到「目標對象（Audience）」按「發布應用程式」，把狀態改成「正式版（In production）」。如果留在「測試」，Google 給的授權', h('strong', null, '每 7 天就會失效'), '。',
-        h('br'), '「發布應用程式」是灰色按不下去的話：先到「品牌（Branding）」把應用程式名稱、使用者支援電子郵件、開發人員聯絡資訊填好並按「儲存」，再回來按。只用 drive.file 權限不需要送 Google 審查。'),
-      h('li', null, '到 ', ext('https://console.cloud.google.com/auth/clients', '用戶端（Clients）'), ' →「建立用戶端」：類型選「網頁應用程式」，在「已授權的重新導向 URI」新增下面這一行：',
-        h('div', { class: 'copy-line', style: 'margin:6px 0' }, h('span', { class: 'mono' }, redirectUri), copyButton(() => redirectUri))),
-      h('li', null, '建立後，把畫面上的「用戶端 ID」和「用戶端密鑰」貼到下面，按「前往 Google 授權」。'),
+      h('li', null, h('strong', null, '建立專案：'), '打開 ', ext('https://console.cloud.google.com/projectcreate', 'Google Cloud 建立專案'), '，名稱隨意（例如 vault-viewer），按「建立」。之後每一步都確認畫面上方選的是這個專案。'),
+      h('li', null, h('strong', null, '啟用 Google Drive API：'), '打開 ', ext('https://console.cloud.google.com/apis/library/drive.googleapis.com', 'Google Drive API'), '，按「啟用」（已經顯示「管理」就是啟用了）。',
+        h('span', { class: 'hint block' }, '這一步最常漏掉，漏了的話連結時會出現「HTTP 403」。')),
+      h('li', null, h('strong', null, '設定應用程式：'), '打開 ', ext('https://console.cloud.google.com/auth/overview', 'Google Auth Platform'), ' 按「開始」：應用程式名稱填 ', h('code', null, '隨身密閱'), '、使用者支援電子郵件選你自己、目標對象選「外部」、聯絡資訊填你的 Email，完成。'),
+      h('li', null, h('strong', null, '填「品牌」頁：'), '左邊選 ', ext('https://console.cloud.google.com/auth/branding', '品牌（Branding）'), '，填下面三項後按「儲存」（標誌不要上傳，上傳了就必須送 Google 審查）：',
+        copyRow('應用程式首頁', site),
+        copyRow('隱私權政策連結', `${site}/privacy.html`),
+        copyRow('已授權網域', domain),
+        h('span', { class: 'hint block' }, '隱私權政策可以用伺服器內建的這一頁；你有自己的隱私權政策網址也可以填自己的（要在同一個網域底下）。已授權網域填主網域，不要加 https:// 和前面的子網域。')),
+      h('li', null, h('strong', null, '發布：'), '左邊選 ', ext('https://console.cloud.google.com/auth/audience', '目標對象（Audience）'), '，按「發布應用程式」→ 確認，發布狀態要變成「', h('strong', null, '實際運作中'), '」（In production）。',
+        h('span', { class: 'hint block' }, '留在「測試」的話，Google 的授權每 7 天就會失效。按鈕是灰色的話，代表「品牌」頁還沒填完或沒儲存，回去檢查後重新整理這一頁。只用 drive.file 權限不需要送 Google 審查。')),
+      h('li', null, h('strong', null, '建立用戶端：'), '左邊選 ', ext('https://console.cloud.google.com/auth/clients', '用戶端（Clients）'), ' →「建立用戶端」，類型選「網頁應用程式」，在「已授權的重新導向 URI」新增：',
+        copyRow('重新導向 URI', redirectUri),
+        h('span', { class: 'hint block' }, '按「建立」後，', h('strong', null, '馬上複製「用戶端密鑰」'), '：Google 只會顯示這一次。忘了複製的話，打開這個用戶端按「新增密鑰（Add secret）」再產生一組。')),
+      h('li', null, h('strong', null, '授權：'), '把「用戶端 ID」和「用戶端密鑰」貼到下面，按「前往 Google 授權」。在 Google 的畫面選你的帳號；出現「Google 尚未驗證這個應用程式」時按「進階」→「前往 隨身密閱（不安全）」（這是你自己的應用程式）；有勾選框的話，',
+        h('strong', null, '一定要勾「Google 雲端硬碟」那一項'), '，再按「繼續」。'),
     ),
-    h('p', { class: 'hint' }, '只會要求「drive.file」權限：伺服器只能看到它自己建立的檔案，看不到你 Google Drive 裡的其他東西。授權時如果出現「Google 尚未驗證這個應用程式」，按「進階」→「前往（不安全）」即可，這是你自己的應用程式。'),
+    h('p', { class: 'hint' }, '只會要求「drive.file」權限：伺服器只能看到它自己建立的檔案，看不到你 Google 雲端硬碟裡的其他東西。Google Drive API 不收費，Google Cloud 專案也不用綁信用卡；檔案佔用的是你自己的雲端硬碟空間。'),
   );
   const r = await modal(p ? `Google Drive：${p.name}` : '連結 Google Drive', [
     steps, row('名稱', name), row('用戶端 ID（Client ID）', clientId), row('用戶端密鑰（Client Secret）', secret),
@@ -344,4 +360,13 @@ async function googleDialog(server: ServerProfile, redirectUri: string, p?: Clou
     return false;
   });
   return r === 'ok';
+}
+
+/** The domain to authorise in Google Cloud: edv.example.com -> example.com, a.b.com.tw -> b.com.tw, x.y.workers.dev -> y.workers.dev. */
+export function mainDomain(host: string): string {
+  if (/^[\d.]+$/.test(host) || !host.includes('.')) return host;
+  const parts = host.split('.');
+  const twoLevel = /^(com|net|org|edu|gov|idv|co|ac|or|ne|go)\.[a-z]{2}$|^(workers|pages)\.dev$|^github\.io$/;
+  const n = parts.length >= 3 && twoLevel.test(parts.slice(-2).join('.')) ? 3 : 2;
+  return parts.slice(-n).join('.');
 }

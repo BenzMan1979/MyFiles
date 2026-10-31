@@ -269,6 +269,7 @@ describe('cloud link vaults on Google Drive', () => {
     expect(p.connectedAt).toBeTruthy();
     const root = [...google.files.entries()].find(([, f]) => f.name === '隨身密閱')!;
     expect(root[1].folder).toBe(true);
+    expect(p.config.folderId).toBe(root[0]); // shown, for the "open the folder in Drive" link
 
     await publish('gv1', id);
     const vaultFolder = [...google.files.entries()].find(([, f]) => f.name === 'gv1')!;
@@ -284,6 +285,13 @@ describe('cloud link vaults on Google Drive', () => {
 
     // test reports the account and quota
     expect((await call('POST', `/api/admin/storage/${id}/test`, {}, token)).body.message).toContain('me@gmail.com · 已用 1.0 GB / 5120 GB');
+
+    // a refusal while reading says why (here: the Drive API was switched off in the project)
+    google.apiDisabled = true;
+    const refused = await hub.handle(new Request('https://x.test/api/blob/gv1/0', { headers: { authorization: `Bearer ${pass}`, range: 'bytes=0-9' } }));
+    expect(refused.status).toBe(502);
+    expect(((await refused.json()) as { message: string }).message).toContain('Google Drive API');
+    google.apiDisabled = false;
 
     // deleting the vault deletes its folder (and every part in it) in one request
     await call('DELETE', '/api/admin/vaults/gv1', undefined, token);

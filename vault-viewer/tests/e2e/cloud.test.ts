@@ -66,7 +66,11 @@ describe('cloud links: packer → Nextcloud (WebDAV) → recipient opens the lin
   it('guides through Google Drive and R2 (redirect address to copy, presets fill in the endpoint)', async () => {
     await p.click('button:has-text("＋ Google Drive")');
     await p.waitForSelector(`dialog .mono:text-is("${site.url}/api/storage/google/callback")`);
-    await expect(p.locator('dialog').textContent()).resolves.toContain('正式版');
+    const guide = (await p.locator('dialog').textContent())!;
+    // the addresses to type into Google Cloud are filled in from this server
+    expect(guide).toContain(`${site.url}/privacy.html`);
+    expect(guide).toContain('實際運作中');
+    expect(guide).toContain('啟用 Google Drive API');
     await shot(p, '01b-google-dialog');
     await p.click('dialog button:has-text("取消")');
     await p.click('button:has-text("Cloudflare R2／S3")');

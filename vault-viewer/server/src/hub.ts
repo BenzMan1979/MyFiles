@@ -5,7 +5,7 @@
 import { Clouds, GOOGLE_CALLBACK } from './cloud';
 import { BadRequest, body, CORS, fail, isStr, json, randomToken, type Store } from './common';
 import { buildStats, type StatLog, type StatVault } from './stats';
-import { StorageError } from './storage';
+import { googleError, StorageError } from './storage';
 
 export type { Store } from './common';
 
@@ -619,6 +619,8 @@ export class Hub {
     const range = req.headers.get('range');
     const res = await this.clouds.adapter(p).get(ref, range && /^bytes=\d{1,12}-\d{0,12}$/.test(range) ? range : null);
     if (res.status !== 200 && res.status !== 206) {
+      // Google says why (quota, API switched off…); other storages only give the status
+      if (p.type === 'gdrive' && res.status !== 404) return fail(502, 'storage', (await googleError('從 Google 雲端硬碟讀取', res)).message);
       const why = res.status === 404 ? '雲端上找不到這份封存檔的內容（可能被手動刪除了）' : `雲端空間回應錯誤（HTTP ${res.status}）`;
       return fail(502, 'storage', why);
     }

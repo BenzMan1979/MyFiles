@@ -139,7 +139,7 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
   - 收回後，正在看的人也讀不到還沒看過的檔案；刪除封存檔時，雲端上的檔案一起刪除
   - 雲端的帳號、密碼、授權只存在你的伺服器（Durable Object），不會傳回打包器網頁
   - 自己架的 Nextcloud 必須能從網際網路用 https 連到；放在家裡建議用 Cloudflare Tunnel
-  - Google Drive 的 OAuth 同意畫面請發布成「正式版」，留在「測試」狀態的授權每 7 天就會失效
+  - Google Drive 的設定步驟見下面「連結 Google Drive」；打包器的「＋ Google Drive」畫面也有同樣的說明，網址都已依你的伺服器填好
   - 要再加一種雲端（OneDrive、Dropbox…）：在 `server/src/storage/` 寫一個 adapter（實作 `test／prepare／put／get／remove` 五個方法），再登記到 `storage/index.ts`
 
 **檢視器**（就是封存檔本身）
@@ -155,6 +155,20 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
   - `{裝置}` 只有瀏覽器與作業系統；網頁讀不到電腦名稱或硬體資訊，要標示電腦名稱請填在收件人「備註」再用 `{備註}`
   - 浮水印被移除或隱藏時會自動上鎖
 - 手機用 `/open.html` 開啟同一個檔案，解密只在手機上進行；金鑰可以按「📷 掃描 QR」用相機掃金鑰卡（在瀏覽器內解碼，不上傳）
+
+## 連結 Google Drive（約 10 分鐘，只要做一次，免費）
+
+用你要存放檔案的 Google 帳號登入 Google Cloud（下面以中文介面為準）。`https://你的伺服器` 換成你的伺服器網址，例如 `https://edv.example.com`。
+
+1. **建立專案**：[Google Cloud 建立專案](https://console.cloud.google.com/projectcreate)，名稱隨意。之後每一步都確認上方選的是這個專案。
+2. **啟用 Google Drive API**：[Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com) 按「啟用」。**最常漏掉**，漏了連結時會出現 HTTP 403。
+3. **設定應用程式**：[Google Auth Platform](https://console.cloud.google.com/auth/overview) 按「開始」：應用程式名稱、使用者支援電子郵件、目標對象選「外部」、聯絡 Email。
+4. **品牌**：填「應用程式首頁」`https://你的伺服器`、「隱私權政策連結」`https://你的伺服器/privacy.html`（伺服器內建；有自己的也可以用）、「已授權網域」填主網域（`edv.example.com` 就填 `example.com`），儲存。**不要上傳標誌**，上傳了就必須送審。
+5. **發布**：「目標對象」按「發布應用程式」，狀態變成「**實際運作中**」（In production）。留在「測試」的話授權每 7 天失效；按鈕是灰色代表品牌頁沒填完。只用 `drive.file` 權限不需要送審。
+6. **建立用戶端**：「用戶端」→「建立用戶端」→ 類型「網頁應用程式」，「已授權的重新導向 URI」填 `https://你的伺服器/api/storage/google/callback`。建立後**馬上複製用戶端密鑰**（只顯示一次；忘了就在用戶端頁「新增密鑰」）。
+7. **授權**：在打包器「☁️ 雲端空間」→「＋ Google Drive」貼上用戶端 ID 和密鑰，按「前往 Google 授權」。出現「Google 尚未驗證這個應用程式」按「進階」→「前往（不安全）」；有勾選框時**要勾「Google 雲端硬碟」**。
+
+費用：Google Drive API 不收費，專案不用綁信用卡；檔案佔用你自己的雲端硬碟空間，每個帳號每天最多上傳 750GB。伺服器那邊，收件人每讀取 32MB 算 Cloudflare 一次請求（免費方案每天 10 萬次）。
 
 ## 安全設計
 
