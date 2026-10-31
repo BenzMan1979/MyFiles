@@ -7,7 +7,7 @@ import { StorageError, type Adapter, type AdapterDeps, type StorageProfile, type
 import { webdavAdapter } from './webdav';
 
 export * from './types';
-export { googleAuthUrl, googleExchange, gdriveAdapter } from './gdrive';
+export { googleAuthUrl, googleError, googleExchange, gdriveAdapter } from './gdrive';
 export { signV4 } from './s3';
 
 interface Kind {
@@ -17,6 +17,8 @@ interface Kind {
   required: string[];
   /** never sent back to the browser; left empty when editing = keep the old value */
   secrets: string[];
+  /** set by the server, not editable, but fine to show (e.g. the Drive folder, for a link to it) */
+  shown?: string[];
   make: (p: StorageProfile, d: AdapterDeps) => Adapter;
 }
 
@@ -40,6 +42,7 @@ const KINDS: Record<StorageType, Kind> = {
     fields: ['clientId', 'clientSecret', 'folderName'],
     required: ['clientId', 'clientSecret'],
     secrets: ['clientSecret', 'refreshToken'],
+    shown: ['folderId'],
     make: gdriveAdapter,
   },
 };
@@ -80,7 +83,7 @@ export function publicProfile(p: StorageProfile, isDefault: boolean, vaults: num
   const secretsSet: Record<string, boolean> = {};
   for (const [f, v] of Object.entries(p.config)) {
     if (k.secrets.includes(f)) secretsSet[f] = !!v;
-    else if (k.fields.includes(f)) config[f] = v;
+    else if (k.fields.includes(f) || k.shown?.includes(f)) config[f] = v;
   }
   return { id: p.id, type: p.type, typeLabel: k.label, name: p.name, createdAt: p.createdAt, status: p.status, account: p.state.account ?? '', connectedAt: p.state.connectedAt ?? '', config, secretsSet, isDefault, vaults };
 }
