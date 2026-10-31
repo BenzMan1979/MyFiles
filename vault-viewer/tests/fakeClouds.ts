@@ -112,6 +112,10 @@ export function fakeGoogle() {
     refreshToken: 'refresh-1',
     /** set to make Google refuse the refresh token, like after 7 days in "testing" mode */
     revoked: false,
+    /** the Drive API is not enabled in the Cloud project */
+    apiDisabled: false,
+    /** scopes handed out with tokens (the user may untick Drive on the consent screen) */
+    grantedScope: 'https://www.googleapis.com/auth/drive.file',
     tokenCalls: 0,
     files,
     expireAccessToken: () => (accessToken = 'expired'),
@@ -128,7 +132,7 @@ export function fakeGoogle() {
       accessToken = `access-${++seq}`;
       if (f.get('grant_type') === 'authorization_code') {
         if (f.get('code') !== 'good-code') return json({ error: 'invalid_grant' }, 400);
-        return json({ access_token: accessToken, refresh_token: g.refreshToken, expires_in: 3600 });
+        return json({ access_token: accessToken, refresh_token: g.refreshToken, expires_in: 3600, scope: g.grantedScope });
       }
       if (g.revoked || f.get('refresh_token') !== g.refreshToken) return json({ error: 'invalid_grant', error_description: 'Token has been expired or revoked.' }, 400);
       return json({ access_token: accessToken, expires_in: 3600 });
@@ -142,6 +146,9 @@ export function fakeGoogle() {
       return json({ id });
     }
     if (headers.get('authorization') !== `Bearer ${accessToken}`) return json({ error: { message: 'Invalid Credentials' } }, 401);
+    if (g.apiDisabled) {
+      return json({ error: { code: 403, message: 'Google Drive API has not been used in project 123 before or it is disabled.', errors: [{ reason: 'accessNotConfigured' }], status: 'PERMISSION_DENIED', details: [{ reason: 'SERVICE_DISABLED' }] } }, 403);
+    }
     if (url.pathname === '/upload/drive/v3/files' && method === 'POST') {
       const meta = JSON.parse(String(init?.body));
       const uid = `u${++seq}`;
