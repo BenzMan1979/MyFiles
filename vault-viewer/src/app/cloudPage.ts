@@ -8,6 +8,11 @@ import { confirmDialog, copyButton, modal, section, toast } from './ui';
 
 let selectedServer = '';
 
+/** Opens the cloud page on this server (from its card on the servers page). */
+export const setCloudServer = (id: string) => {
+  selectedServer = id;
+};
+
 const TYPE_ICON: Record<string, string> = { gdrive: '🟢', webdav: '🗄️', s3: '🪣' };
 
 export function renderCloud(root: HTMLElement, rerender: () => void) {
@@ -15,6 +20,7 @@ export function renderCloud(root: HTMLElement, rerender: () => void) {
     h('div', { class: 'page-head' },
       h('h1', null, '☁️ 雲端空間'),
       h('p', { class: 'muted' }, '把伺服器連到你自己的雲端空間後，建立封存檔時可以選「雲端連結」：加密後的內容放在你的雲端，收件人打開網址、輸入密碼和金鑰就能直接看，不用下載檔案，也不需要雲端帳號。'),
+      h('p', { class: 'muted' }, '只要設定一次：連線資料存在伺服器上，之後每次建立封存檔只要在「交付方式」選「雲端連結」，換電腦也不用重新連。'),
     ),
   );
   const list = servers.list();

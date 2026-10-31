@@ -45,7 +45,8 @@ describe('cloud links: packer → Nextcloud (WebDAV) → recipient opens the lin
     await p.fill('dialog input[type=password]', 'cloud-admin-pass');
     await p.click('dialog button:has-text("登入")');
     await p.waitForSelector('.server-card:has-text("管理員已登入")');
-    await p.click('.app-nav a:has-text("雲端空間")');
+    // reached from the server's own card once logged in
+    await p.click('.server-card a:has-text("雲端空間")');
     await p.waitForSelector('text=還沒有連結任何雲端空間');
     await p.click('button:has-text("Nextcloud／WebDAV")');
     const field = (label: string) => p.locator(`dialog .field:has(label:text-is("${label}")) input`);

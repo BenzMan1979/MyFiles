@@ -3,6 +3,7 @@ import { APP_NAME, DEPLOY_BUTTON_URL } from '../shared/config';
 import { settings } from '../shared/settings';
 import { clear, h } from '../shared/dom';
 import { api, ApiError, login, normaliseUrl, serverInfo, servers, tokens, type ServerProfile } from './api';
+import { setCloudServer } from './cloudPage';
 import { confirmDialog, modal, section, toast } from './ui';
 
 export function renderServers(root: HTMLElement, rerender: () => void) {
@@ -103,6 +104,8 @@ function serverCard(s: ServerProfile, rerender: () => void) {
         ? h('button', { class: 'btn small', onclick: async () => { await api(s, '/api/admin/logout', { body: {}, auth: true }).catch(() => {}); tokens.clear(s.id); rerender(); } }, '登出')
         : h('button', { class: 'btn small primary', onclick: () => loginDialog(s).then((ok) => ok && rerender()) }, '登入'),
       !isDefault ? h('button', { class: 'btn small', onclick: () => { servers.setDefault(s.id); rerender(); } }, '設為預設') : null,
+      // the cloud storages belong to this server: set them up once here, every vault can then use them
+      loggedIn ? h('a', { class: 'btn small', href: '#cloud', onclick: () => setCloudServer(s.id) }, '☁️ 雲端空間') : null,
       guarded,
     ),
   );
