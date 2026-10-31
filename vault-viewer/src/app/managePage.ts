@@ -1,12 +1,14 @@
 import { clear, formatDateTime, h } from '../shared/dom';
-import { api, servers, tokens, type RemoteLog, type RemoteVault, type ServerProfile } from './api';
+import { api, cloudLink, servers, tokens, type RemoteLog, type RemoteVault, type ServerProfile } from './api';
+import { removeVault } from './createPage';
 import { loginDialog } from './serverPage';
 import { statsPanel } from './statsView';
-import { confirmDialog, fromLocalInput, modal, section, toast, toLocalInput } from './ui';
+import { confirmDialog, copyButton, fromLocalInput, modal, section, toast, toLocalInput } from './ui';
 
 let selectedServer = '';
 
 function statusOf(v: RemoteVault, now: number): { label: string; cls: string } {
+  if (v.cloud && !v.cloud.complete) return { label: v.revoked ? '刪除中' : '上傳未完成', cls: 'warn' };
   if (v.revoked) return { label: '已收回', cls: 'danger' };
   if (v.locked) return { label: '已鎖定', cls: 'danger' };
   if (v.policy.expiresAt && now >= Date.parse(v.policy.expiresAt)) return { label: '已過期', cls: 'warn' };
@@ -100,12 +102,13 @@ function batchCard(server: ServerProfile, title: string, vaults: RemoteVault[], 
   const rows = vaults.map((v) => {
     const st = statusOf(v, now);
     return h('tr', null,
-      h('td', null, h('strong', null, v.recipient || '（未命名）')),
+      h('td', null, h('strong', null, v.recipient || '（未命名）'), v.cloud ? h('span', { class: 'chip', style: 'margin-left:6px', title: '雲端連結' }, '☁️') : null),
       h('td', null, h('span', { class: `chip ${st.cls}` }, st.label)),
       h('td', null, `${v.opens}${v.policy.maxOpens != null ? ` / ${v.policy.maxOpens}` : ''} 次`),
       h('td', null, v.policy.expiresAt ? formatDateTime(v.policy.expiresAt) : '不限'),
       h('td', null, v.lastOpenAt ? formatDateTime(v.lastOpenAt) : h('span', { class: 'muted' }, '尚未開啟')),
       h('td', { class: 'actions' }, h('div', null,
+        v.cloud?.complete ? copyButton(() => cloudLink(server.url, v.id), '複製連結') : null,
         h('button', { class: 'btn small', onclick: () => showLogs(server, v) }, '紀錄'),
         h('button', { class: 'btn small', onclick: () => editPolicy(server, v).then((ok) => ok && rerender()) }, '調整'),
         v.locked ? h('button', { class: 'btn small', onclick: async () => { await api(server, `/api/admin/vaults/${v.id}`, { method: 'PATCH', body: { unlock: true }, auth: true }); toast('已解除鎖定'); rerender(); } }, '解除鎖定') : null,
@@ -118,8 +121,9 @@ function batchCard(server: ServerProfile, title: string, vaults: RemoteVault[], 
               rerender();
             } }, '收回'),
         h('button', { class: 'btn small ghost', title: '從伺服器刪除', onclick: async () => {
-          if (!(await confirmDialog('刪除封存檔', `從伺服器刪除「${v.recipient}」的這份封存檔與開啟紀錄。刪除後檔案永遠打不開，而且無法復原。`, '永久刪除', true))) return;
-          await api(server, `/api/admin/vaults/${v.id}`, { method: 'DELETE', auth: true });
+          const what = v.cloud ? '這份雲端封存檔（連同雲端空間裡的加密內容）' : '這份封存檔';
+          if (!(await confirmDialog('刪除封存檔', `從伺服器刪除「${v.recipient}」的${what}與開啟紀錄。刪除後永遠打不開，而且無法復原。`, '永久刪除', true))) return;
+          await removeVault(server, v.id);
           toast('已刪除');
           rerender();
         } }, '🗑'),

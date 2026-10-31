@@ -13,6 +13,8 @@ export interface OpenedVault {
   tag: string;
   /** The address the server saw (online vaults only). */
   client: { ip: string | null; country: string | null } | null;
+  /** cloud link vaults: the pass for reading the encrypted parts from the server */
+  blobPass: string | null;
 }
 
 const TAG_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -108,7 +110,7 @@ async function unlockOffline(header: VaultHeader, password: string, keyfile: Uin
     countedThisPage.add(header.id);
   }
   saveState(header.id, st);
-  return { manifest, contentKey, status: { opens: st.opens, maxOpens: p.maxOpens, expiresAt: p.expiresAt }, tag: newTag(), client: null };
+  return { manifest, contentKey, status: { opens: st.opens, maxOpens: p.maxOpens, expiresAt: p.expiresAt }, tag: newTag(), client: null, blobPass: null };
 }
 
 // ---------- online ----------
@@ -133,7 +135,7 @@ async function post(server: string, path: string, body: unknown) {
   return { ok: res.ok, data };
 }
 
-const FINAL_CODES = new Set(['revoked', 'locked', 'expired', 'exhausted', 'unknown', 'not_yet']);
+const FINAL_CODES = new Set(['revoked', 'locked', 'expired', 'exhausted', 'unknown', 'not_yet', 'uploading']);
 
 async function unlockOnline(header: VaultHeader, password: string, keyfile: Uint8Array): Promise<OpenedVault> {
   const server = header.server!;
@@ -161,7 +163,8 @@ async function unlockOnline(header: VaultHeader, password: string, keyfile: Uint
   }
   const s = r.data.status as { opens: number; maxOpens: number | null; expiresAt: string | null };
   const client = r.data.client as { ip: string | null; country: string | null } | undefined;
-  return { manifest, contentKey, status: { opens: s.opens, maxOpens: s.maxOpens, expiresAt: s.expiresAt }, tag, client: client ?? null };
+  const blob = r.data.blob as { token?: string } | undefined;
+  return { manifest, contentKey, status: { opens: s.opens, maxOpens: s.maxOpens, expiresAt: s.expiresAt }, tag, client: client ?? null, blobPass: blob?.token ?? null };
 }
 
 export function unlockVault(header: VaultHeader, password: string, keyfile: Uint8Array): Promise<OpenedVault> {

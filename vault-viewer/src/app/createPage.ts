@@ -1,11 +1,11 @@
 import template from '../generated/viewer-template.html?raw';
 import { randomBytes, toB64 } from '../core/bytes';
-import { buildVault, DEFAULT_POLICY, DEFAULT_PROTECTION, renderVaultHtml, type InputFile, type Policy, type Protection } from '../core/format';
+import { buildVault, DEFAULT_POLICY, DEFAULT_PROTECTION, renderVaultHtml, sliceBlob, type InputFile, type Policy, type Protection } from '../core/format';
 import { generatePassword, keyFileContent, keyToText, randomId } from '../core/keytext';
 import { extOf, formatSize, guessMime, kindOf } from '../core/mime';
-import { formatDateTime, h, saveBlob } from '../shared/dom';
+import { clear, formatDateTime, h, saveBlob } from '../shared/dom';
 import { DENSITY_LABELS, describeDevice, watermarkBackground, watermarkStyle, watermarkText, WATERMARK_SIZE_RANGE } from '../viewer/protect';
-import { api, phoneViewerUrl, servers, tokens } from './api';
+import { api, ApiError, cloudLink, listClouds, phoneViewerUrl, servers, tokens, uploadPart, type CloudProfile, type ServerProfile } from './api';
 import { decodeCsv, parseRecipients, templateCsv } from './csv';
 import { settings } from '../shared/settings';
 import { canPickFolder, downloadKeyCard, downloadSheet, downloadZip, safeName, saveToFolder, type BatchOutput } from './output';
@@ -13,6 +13,7 @@ import { loginDialog } from './serverPage';
 import { confirmDialog, copyButton, field, fromLocalInput, modal, qrElement, section, toast, toggle, toLocalInput } from './ui';
 
 const SIZE_LIMIT = settings.limits.maxTotalMB * 1024 * 1024;
+const CLOUD_LIMIT = settings.limits.cloudMaxTotalMB * 1024 * 1024;
 const MAX_RECIPIENTS = settings.limits.maxRecipients;
 const MIN_PASSWORD = settings.limits.minPasswordLength;
 const IMPORT_LIMITS = { maxRecipients: MAX_RECIPIENTS, minPassword: MIN_PASSWORD };
@@ -25,6 +26,9 @@ interface Draft {
   title: string;
   mode: 'online' | 'offline';
   serverId: string;
+  /** online vaults: hand out a .vault.html file, or keep it in a cloud storage and hand out a link */
+  delivery: 'file' | 'cloud';
+  storageId: string;
   notBefore: string; // datetime-local value
   expiryPreset: 'none' | '7' | '30' | '90' | 'custom';
   expiryCustom: string;
@@ -48,6 +52,8 @@ function newDraft(): Draft {
     title: '',
     mode: 'online',
     serverId: servers.defaultId(),
+    delivery: 'file',
+    storageId: '',
     notBefore: '',
     expiryPreset: preset,
     expiryCustom: preset === 'custom' ? toLocalInput(new Date(Date.now() + days! * 86400_000).toISOString()) : '',
@@ -70,6 +76,9 @@ function newDraft(): Draft {
 }
 
 let draft = newDraft();
+/** cloud storages of the chosen server, once loaded (null = not loaded / not available) */
+let cloudChoices: { serverId: string; profiles: CloudProfile[]; at: number } | null = null;
+const isCloud = () => draft.mode === 'online' && draft.delivery === 'cloud';
 let stepIndex = 0;
 let lastOutput: BatchOutput | null = null;
 
@@ -120,6 +129,12 @@ function validate(i: number): string | null {
   if (i === 1) {
     if (!draft.title.trim()) return '請輸入封存名稱';
     if (draft.mode === 'online' && !servers.get(draft.serverId)) return '線上模式需要先選擇伺服器（或到「伺服器設定」新增一台）';
+    if (isCloud()) {
+      const ok = cloudChoices?.serverId === draft.serverId && cloudChoices.profiles.some((p) => p.id === draft.storageId && p.status === 'ready');
+      if (!ok) return '「雲端連結」需要先選擇雲端空間（可以到「雲端空間」新增）';
+      const total = draft.files.reduce((n, f) => n + f.file.size, 0);
+      if (total > CLOUD_LIMIT) return `雲端連結一份最大 ${settings.limits.cloudMaxTotalMB}MB，請分成幾份封存`;
+    }
   }
   if (i === 2) {
     if (draft.expiryPreset === 'custom' && !draft.expiryCustom) return '請選擇到期時間';
@@ -240,7 +255,9 @@ function stepFiles(body: HTMLElement, rerender: () => void) {
       total > settings.limits.phoneMB * 1024 * 1024 && total <= SIZE_LIMIT
         ? h('p', { class: 'note' }, `超過 ${settings.limits.phoneMB}MB 的封存檔，電腦開得起來，但手機（特別是 iPhone）可能因為記憶體不足而打不開。收件人用手機的話，建議分成較小的幾份。`)
         : null,
-      total > SIZE_LIMIT ? h('p', { class: 'note warn' }, `總大小超過 ${settings.limits.maxTotalMB}MB，收件人開啟時可能很慢或開不起來。建議先壓縮影片，或分成幾份封存。`) : null,
+      total > SIZE_LIMIT
+        ? h('p', { class: 'note warn' }, `總大小超過 ${settings.limits.maxTotalMB}MB，做成封存檔的話，收件人開啟時可能很慢或開不起來。建議在下一步選「☁️ 雲端連結」（收件人只會下載他點開的檔案，最大 ${settings.limits.cloudMaxTotalMB}MB），或先壓縮影片、分成幾份封存。`)
+        : null,
       sorted.some((f) => extOf(f.path) === 'pdf') ? pdfImageOptions(rerender) : null,
       h('div', { class: 'file-table' },
         ...sorted.map((f) => {
@@ -288,10 +305,28 @@ function stepBasics(body: HTMLElement, rerender: () => void) {
     } else {
       if (!servers.get(draft.serverId)) draft.serverId = servers.default()!.id;
       const sel = h('select', { class: 'input' }, ...list.map((s) => h('option', { value: s.id, selected: s.id === draft.serverId }, `${s.name}（${s.url.replace(/^https?:\/\//, '')}）`)));
-      sel.addEventListener('change', () => (draft.serverId = sel.value));
+      sel.addEventListener('change', () => {
+        draft.serverId = sel.value;
+        if (draft.delivery === 'cloud') rerender();
+      });
       serverBlock = field('使用哪台伺服器', sel);
     }
   }
+  const deliveryCard = (delivery: 'file' | 'cloud', icon: string, name: string, desc: string) =>
+    h('label', { class: `choice ${draft.delivery === delivery ? 'selected' : ''}` },
+      h('input', { type: 'radio', name: 'delivery', checked: draft.delivery === delivery, onchange: () => { draft.delivery = delivery; rerender(); } }),
+      h('div', null, h('div', { class: 'choice-title' }, icon, ' ', name), h('p', { class: 'muted small' }, desc)),
+    );
+  const server = servers.get(draft.serverId);
+  const deliveryBlock = draft.mode === 'online' && server
+    ? section('交付方式',
+        h('div', { class: 'choices' },
+          deliveryCard('file', '📄', '封存檔', '產生 .vault.html 檔案，由你用雲端硬碟、隨身碟交給收件人；收件人下載後用瀏覽器打開。'),
+          deliveryCard('cloud', '☁️', '雲端連結', '加密後放在你的雲端空間，收件人打開網址就能看，不用下載檔案；只會讀取他點開的檔案，適合大檔案與手機。'),
+        ),
+        draft.delivery === 'cloud' ? cloudPicker(server, rerender) : null,
+      )
+    : null;
 
   body.append(
     section('封存名稱',
@@ -304,7 +339,45 @@ function stepBasics(body: HTMLElement, rerender: () => void) {
       ),
       serverBlock,
     ),
+    deliveryBlock ?? '',
   );
+}
+
+/** The cloud storage to keep a cloud link vault in (loaded from the server; needs the admin login). */
+function cloudPicker(server: ServerProfile, rerender: () => void): HTMLElement {
+  const box = h('div', { class: 'cloud-picker' });
+  if (!tokens.get(server.id)) {
+    box.append(h('p', { class: 'note warn' }, `要先登入伺服器「${server.name}」的管理員，才能選雲端空間。 `, h('button', { class: 'btn small primary', onclick: () => loginDialog(server).then((ok) => ok && rerender()) }, '登入')));
+    return box;
+  }
+  const fill = (profiles: CloudProfile[]) => {
+    clear(box);
+    const ready = profiles.filter((p) => p.status === 'ready');
+    if (!ready.length) {
+      box.append(h('p', { class: 'note warn' }, '這台伺服器還沒有連結雲端空間。請先到 ', h('a', { href: '#cloud' }, '☁️ 雲端空間'), ' 連結 Google Drive、Nextcloud 或 Cloudflare R2。'));
+      return;
+    }
+    if (!ready.some((p) => p.id === draft.storageId)) draft.storageId = (ready.find((p) => p.isDefault) ?? ready[0]).id;
+    const sel = h('select', { class: 'input' }, ...ready.map((p) => h('option', { value: p.id, selected: p.id === draft.storageId }, `${p.name}（${p.typeLabel}${p.account ? ` · ${p.account}` : ''}）`)));
+    sel.addEventListener('change', () => (draft.storageId = sel.value));
+    box.append(field('放在哪個雲端空間', sel, '雲端上只會有加密後的內容；收件人不需要這個雲端的帳號。'));
+  };
+  // reuse the list while clicking around this step; fetch again after a while (one may have been added meanwhile)
+  if (cloudChoices?.serverId === server.id && Date.now() - cloudChoices.at < 20_000) fill(cloudChoices.profiles);
+  else {
+    box.append(h('p', { class: 'muted' }, '讀取雲端空間…'));
+    listClouds(server)
+      .then((r) => {
+        cloudChoices = { serverId: server.id, profiles: r.profiles, at: Date.now() };
+        fill(r.profiles);
+      })
+      .catch((e: Error) => {
+        clear(box);
+        const old = e instanceof ApiError && e.code === 'not_found';
+        box.append(h('p', { class: 'note warn' }, old ? '這台伺服器的版本還不支援雲端連結，請更新伺服器的程式（重新部署）。' : e.message));
+      });
+  }
+  return box;
 }
 
 // ---------- step 3: policy ----------
@@ -543,6 +616,7 @@ function stepGenerate(body: HTMLElement, rerender: () => void) {
     h('dt', null, '封存名稱'), h('dd', null, draft.title),
     h('dt', null, '檔案'), h('dd', null, `${draft.files.length} 個，共 ${formatSize(total)}`),
     h('dt', null, '模式'), h('dd', null, draft.mode === 'online' ? `線上驗證（${server?.name}）` : '離線'),
+    h('dt', null, '交付'), h('dd', null, isCloud() ? `☁️ 雲端連結（${cloudChoices?.profiles.find((p) => p.id === draft.storageId)?.name ?? ''}）` : '📄 封存檔（.vault.html）'),
     h('dt', null, '到期'), h('dd', null, exp ? formatDateTime(exp) : '不限期'),
     h('dt', null, '次數'), h('dd', null, draft.limitOpens ? `每人 ${draft.maxOpens} 次` : '不限'),
     h('dt', null, '防護'), h('dd', null, [pr.watermark.enabled ? '浮水印' : '', pr.allowCopy ? '' : '禁止複製', pr.allowPrint ? '' : '禁止列印', pr.allowDownload ? '可下載' : '禁止下載', pr.idleLockMinutes ? `閒置 ${pr.idleLockMinutes} 分鐘上鎖` : ''].filter(Boolean).join('、')),
@@ -575,7 +649,7 @@ function stepGenerate(body: HTMLElement, rerender: () => void) {
   });
 
   body.append(
-    outBytes > 1024 ** 3
+    outBytes > 1024 ** 3 && !isCloud()
       ? h('p', { class: 'note warn' }, `每位收件人的封存檔都要各自加密一份，總共約 ${formatSize(outBytes)}，瀏覽器可能會因為記憶體不足而失敗。建議分成幾批建立（每批合計 1GB 以內）。`)
       : '',
     section('確認設定', summary),
@@ -583,7 +657,9 @@ function stepGenerate(body: HTMLElement, rerender: () => void) {
       !loggedIn && server
         ? h('p', { class: 'note warn' }, `需要先登入伺服器「${server.name}」的管理員，才能登記封存檔。 `, h('button', { class: 'btn small primary', onclick: () => loginDialog(server).then((ok) => ok && rerender()) }, '登入'))
         : null,
-      h('p', { class: 'muted' }, '加密全部在這台電腦上進行，文件不會上傳。', draft.mode === 'online' ? '只有伺服器那份金鑰和使用條件會送到你的伺服器。' : ''),
+      isCloud()
+        ? h('p', { class: 'muted' }, '加密全部在這台電腦上進行。上傳到雲端空間的只有加密後的內容，雲端業者看不到檔名和內容；收件人通過伺服器檢查後才能讀取。')
+        : h('p', { class: 'muted' }, '加密全部在這台電腦上進行，文件不會上傳。', draft.mode === 'online' ? '只有伺服器那份金鑰和使用條件會送到你的伺服器。' : ''),
       go, progress, err,
     ),
   );
@@ -623,37 +699,69 @@ async function generate(onProgress: (done: number, all: number, label: string) =
   const items: BatchOutput['items'] = [];
   const registrations: Record<string, unknown>[] = [];
   const title = draft.title.trim();
+  const storage = isCloud() ? draft.storageId : null;
+  // cloud vaults are registered one by one as they are uploaded; undo them if the batch fails halfway
+  const uploaded: string[] = [];
+  try {
+    for (let i = 0; i < n; i++) {
+      const r = draft.recipients[i];
+      const name = r.name.trim();
+      const password = draft.samePassword ? draft.sharedPassword : r.password;
+      const keyfile = randomBytes(32);
+      const share = server ? randomBytes(32) : null;
+      onProgress(i, n, `正在為「${name}」加密（${i + 1}/${n}）…`);
+      const encryptPart = storage ? 0.5 : 1; // with a cloud upload, encrypting is the first half of each recipient's bar
+      const built = await buildVault(inputs, {
+        title, recipient: name, note: r.note.trim(), batchId, mode: draft.mode, server: server?.url ?? null, policy,
+        protection: structuredClone(draft.protection), password, keyfile, serverShare: share,
+      }, (done) => onProgress(i + (done / total) * encryptPart, n, `正在為「${name}」加密（${i + 1}/${n}）… ${Math.round((done / total) * 100)}%`));
+      await new Promise((r) => setTimeout(r, 0));
+      const registration = { id: built.header.id, batchId, title, recipient: name, authKey: toB64(built.authKey), share: share ? toB64(share) : '', policy };
+      const base = { recipient: name, password, keyText: keyToText(keyfile), keyFileText: keyFileContent(keyfile, title, name) };
+      if (server && storage) {
+        const id = built.header.id;
+        const size = built.header.blobSize;
+        const reg = await api<{ cloud: Record<string, { partBytes: number; parts: number }> }>(server, '/api/admin/vaults', {
+          body: { vaults: [{ ...registration, cloud: { storage, size }, header: built.header }] },
+          auth: true,
+        });
+        uploaded.push(id);
+        const { partBytes, parts } = reg.cloud[id];
+        for (let part = 0; part < parts; part++) {
+          const from = part * partBytes;
+          onProgress(i + 0.5 + (part / parts) * 0.5, n, `正在上傳「${name}」到雲端（${i + 1}/${n}）… ${formatSize(from)} / ${formatSize(size)}`);
+          await uploadPart(server, id, part, sliceBlob(built.blobParts, from, Math.min(size, from + partBytes)));
+        }
+        await api(server, `/api/admin/vaults/${id}/complete`, { body: {}, auth: true });
+        items.push({ ...base, vault: null, vaultName: '', link: cloudLink(server.url, id) });
+      } else {
+        items.push({ ...base, vault: new Blob(renderVaultHtml(template, built.header, built.blobParts), { type: 'text/html' }), vaultName: `${safeName(title)}_${safeName(name)}.vault.html`, link: null });
+        if (server) registrations.push(registration);
+      }
+    }
 
-  for (let i = 0; i < n; i++) {
-    const r = draft.recipients[i];
-    const name = r.name.trim();
-    const password = draft.samePassword ? draft.sharedPassword : r.password;
-    const keyfile = randomBytes(32);
-    const share = server ? randomBytes(32) : null;
-    onProgress(i, n, `正在為「${name}」加密（${i + 1}/${n}）…`);
-    const built = await buildVault(inputs, {
-      title, recipient: name, note: r.note.trim(), batchId, mode: draft.mode, server: server?.url ?? null, policy,
-      protection: structuredClone(draft.protection), password, keyfile, serverShare: share,
-    }, (done) => onProgress(i + done / total, n, `正在為「${name}」加密（${i + 1}/${n}）… ${Math.round((done / total) * 100)}%`));
-    await new Promise((r) => setTimeout(r, 0));
-    const vaultName = `${safeName(title)}_${safeName(name)}.vault.html`;
-    items.push({
-      recipient: name,
-      password,
-      keyText: keyToText(keyfile),
-      keyFileText: keyFileContent(keyfile, title, name),
-      vault: new Blob(renderVaultHtml(template, built.header, built.blobParts), { type: 'text/html' }),
-      vaultName,
-    });
-    if (server) registrations.push({ id: built.header.id, batchId, title, recipient: name, authKey: toB64(built.authKey), share: toB64(share!), policy });
-  }
-
-  if (server) {
-    onProgress(n, n, '正在登記到伺服器…');
-    await api(server, '/api/admin/vaults', { body: { vaults: registrations }, auth: true });
+    if (server && registrations.length) {
+      onProgress(n, n, '正在登記到伺服器…');
+      await api(server, '/api/admin/vaults', { body: { vaults: registrations }, auth: true });
+    }
+  } catch (e) {
+    if (server && uploaded.length) {
+      onProgress(n, n, '發生錯誤，正在清除已上傳的部分…');
+      for (const id of uploaded) await removeVault(server, id).catch(() => {});
+    }
+    throw e;
   }
   onProgress(n, n, '完成');
-  return { title, mode: draft.mode, serverName: server?.name ?? null, createdAt: new Date().toISOString(), expiresAt: exp, maxOpens: policy.maxOpens, phoneUrl: phoneViewerUrl(server?.url), items };
+  return { title, mode: draft.mode, delivery: storage ? 'cloud' : 'file', serverName: server?.name ?? null, createdAt: new Date().toISOString(), expiresAt: exp, maxOpens: policy.maxOpens, phoneUrl: phoneViewerUrl(server?.url), items };
+}
+
+/** Deletes a vault from the server, and its parts from the cloud storage (which may take a few calls). */
+export async function removeVault(server: ServerProfile, id: string): Promise<void> {
+  for (let i = 0; i < 50; i++) {
+    const r = await api<{ pending?: number }>(server, `/api/admin/vaults/${id}`, { method: 'DELETE', auth: true });
+    if (!r.pending) return;
+  }
+  throw new Error('雲端上的檔案還沒刪完，請再按一次刪除');
 }
 
 // ---------- result ----------
@@ -673,15 +781,17 @@ function renderResult(root: HTMLElement, b: BatchOutput, rerender: () => void) {
 
   const rows = b.items.map((it) =>
     h('div', { class: 'card result-card' },
-      h('div', { class: 'result-head' }, h('h3', null, it.recipient), h('span', { class: 'muted small mono' }, it.vaultName)),
+      h('div', { class: 'result-head' }, h('h3', null, it.recipient), it.link ? null : h('span', { class: 'muted small mono' }, it.vaultName)),
       h('div', { class: 'result-grid' },
         h('div', null,
-          h('div', { class: 'label' }, '密碼'),
+          it.link ? h('div', { class: 'label' }, '連結') : null,
+          it.link ? h('div', { class: 'copy-line' }, h('a', { class: 'mono link-out', href: it.link, target: '_blank', rel: 'noopener' }, it.link), copyButton(() => it.link!)) : null,
+          h('div', { class: 'label', style: it.link ? 'margin-top:10px' : '' }, '密碼'),
           h('div', { class: 'copy-line' }, h('span', { class: 'mono' }, it.password), copyButton(() => it.password)),
           h('div', { class: 'label', style: 'margin-top:10px' }, '金鑰'),
           h('div', { class: 'copy-line' }, h('span', { class: 'mono key' }, it.keyText), copyButton(() => it.keyText)),
           h('div', { class: 'row-buttons', style: 'margin-top:10px' },
-            h('button', { class: 'btn small', onclick: () => saveBlob(it.vault, it.vaultName) }, '⬇ 封存檔'),
+            it.vault ? h('button', { class: 'btn small', onclick: () => saveBlob(it.vault!, it.vaultName) }, '⬇ 封存檔') : null,
             h('button', { class: 'btn small', onclick: () => saveBlob(new Blob([it.keyFileText], { type: 'text/plain' }), `${safeName(it.recipient)}.key`) }, '⬇ 金鑰檔'),
             h('button', { class: 'btn small', onclick: () => downloadKeyCard(b, it) }, '⬇ 金鑰卡'),
           ),
@@ -697,11 +807,15 @@ function renderResult(root: HTMLElement, b: BatchOutput, rerender: () => void) {
     section('儲存',
       h('div', { class: 'row-buttons' }, folderBtn, zipBtn, h('button', { class: 'btn', onclick: () => downloadSheet(b) }, '📋 只下載交付清單')),
       saveStatus,
-      h('p', { class: 'hint' }, '資料夾內容：交付清單、每位收件人一個資料夾（封存檔、.key 金鑰檔、可列印的金鑰卡）。'),
+      h('p', { class: 'hint' }, b.delivery === 'cloud'
+        ? '資料夾內容：交付清單、每位收件人一個資料夾（連結捷徑、.key 金鑰檔、可列印的金鑰卡）。封存檔本身已經在你的雲端空間裡。'
+        : '資料夾內容：交付清單、每位收件人一個資料夾（封存檔、.key 金鑰檔、可列印的金鑰卡）。'),
     ),
     section('怎麼交給收件人（三樣東西分開傳）',
       h('ol', { class: 'steps' },
-        h('li', null, h('strong', null, '封存檔'), '：雲端硬碟連結或隨身碟。不建議用 Email 附件（公司信箱可能擋 HTML 附件）。'),
+        b.delivery === 'cloud'
+          ? h('li', null, h('strong', null, '連結'), '：用 Email 或通訊軟體都可以。光有連結打不開，還需要密碼和金鑰；收件人用電腦或手機的瀏覽器打開即可。')
+          : h('li', null, h('strong', null, '封存檔'), '：雲端硬碟連結或隨身碟。不建議用 Email 附件（公司信箱可能擋 HTML 附件）。'),
         h('li', null, h('strong', null, '金鑰'), '：金鑰卡、.key 檔或金鑰文字，用另一個管道（例如通訊軟體）。'),
         h('li', null, h('strong', null, '密碼'), '：再用第三個管道，例如電話或簡訊。'),
       ),

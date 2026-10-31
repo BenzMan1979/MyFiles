@@ -25,6 +25,8 @@ export interface AppSettings {
     maxTotalMB: number;
     /** above this a warning says phones may not manage to open the vault (memory limits) */
     phoneMB: number;
+    /** largest total for a cloud link vault (read part by part, so it can be much bigger than a file) */
+    cloudMaxTotalMB: number;
     minPasswordLength: number;
   };
   defaults: {
@@ -57,7 +59,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     cloudflareSignup: 'https://dash.cloudflare.com/sign-up',
     cloudflareDashboard: 'https://dash.cloudflare.com/',
   },
-  limits: { maxRecipients: 500, maxTotalMB: 300, phoneMB: 100, minPasswordLength: 6 },
+  limits: { maxRecipients: 500, maxTotalMB: 300, phoneMB: 100, cloudMaxTotalMB: 2048, minPasswordLength: 6 },
   defaults: {
     expiryDays: 30,
     maxFailures: 5,
@@ -113,6 +115,7 @@ export function resolveSettings(raw: unknown): AppSettings {
       maxRecipients: num(lim.maxRecipients, d.limits.maxRecipients, 1, 500), // the server accepts 500 per batch
       maxTotalMB: num(lim.maxTotalMB, d.limits.maxTotalMB, 1, 2000),
       phoneMB: num(lim.phoneMB, d.limits.phoneMB, 1, 2000),
+      cloudMaxTotalMB: num(lim.cloudMaxTotalMB, d.limits.cloudMaxTotalMB, 1, 20000),
       minPasswordLength: num(lim.minPasswordLength, d.limits.minPasswordLength, 1, 64),
     },
     defaults: {

@@ -257,6 +257,8 @@ export function renderVaultHtml(template: string, header: VaultHeader, blobParts
 export interface Payload {
   header: VaultHeader;
   chunks: string[];
+  /** set for a cloud link vault: the blob is fetched from the server instead of `chunks` */
+  remote?: { size: number; partBytes: number; parts: number };
 }
 
 function checkHeader(h: VaultHeader): VaultHeader {
@@ -285,11 +287,31 @@ export function readPayloadFromHtml(html: string): Payload {
   return { header: checkHeader(JSON.parse(hm[1])), chunks };
 }
 
+/** Where a vault's encrypted blob is read from: the HTML file itself, or the cloud (src/viewer/remote.ts). */
+export interface BlobSource {
+  read(offset: number, length: number): Uint8Array | Promise<Uint8Array>;
+  clear(): void;
+}
+
+/** Bytes [start, end) of a blob held as consecutive parts, copied into one array (for uploading a part). */
+export function sliceBlob(parts: Uint8Array[], start: number, end: number): Uint8Array {
+  const out = new Uint8Array(Math.max(0, end - start));
+  let pos = 0;
+  for (const p of parts) {
+    const from = Math.max(start, pos);
+    const to = Math.min(end, pos + p.length);
+    if (from < to) out.set(p.subarray(from - pos, to - pos), from - start);
+    pos += p.length;
+    if (pos >= end) break;
+  }
+  return out;
+}
+
 /**
  * Random access into the embedded blob. Only the chunks covering a file are decoded, so opening
  * one document in a 300 MB vault does not decode all 300 MB.
  */
-export class ChunkReader {
+export class ChunkReader implements BlobSource {
   private cache = new Map<number, Uint8Array>();
 
   constructor(private p: Payload) {
@@ -342,8 +364,8 @@ export async function openManifest(header: VaultHeader, contentKey: CryptoKey): 
   return JSON.parse(fromUtf8(pt)) as Manifest;
 }
 
-export function readFile(header: VaultHeader, blob: ChunkReader, entry: FileEntry, contentKey: CryptoKey): Promise<Uint8Array> {
-  return aesDecrypt(contentKey, fromB64(entry.iv), blob.read(entry.offset, entry.length), fileAad(header.id, entry.id));
+export async function readFile(header: VaultHeader, blob: BlobSource, entry: FileEntry, contentKey: CryptoKey): Promise<Uint8Array> {
+  return aesDecrypt(contentKey, fromB64(entry.iv), await blob.read(entry.offset, entry.length), fileAad(header.id, entry.id));
 }
 
 export { deriveContentKey };

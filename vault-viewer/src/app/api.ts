@@ -151,6 +151,8 @@ export interface ServerInfo {
   version: number;
   adminConfigured: boolean;
   serverTime: string;
+  /** present on servers that can keep vaults in a cloud storage (cloud links) */
+  cloud?: { partBytes: number };
 }
 
 export async function serverInfo(url: string): Promise<ServerInfo> {
@@ -176,6 +178,8 @@ export interface RemoteVault {
   revoked: boolean;
   createdAt: string;
   lastOpenAt: string | null;
+  /** set for cloud link vaults */
+  cloud?: { storage: string; size: number; complete: boolean };
 }
 
 export interface RemoteLog {
@@ -186,4 +190,60 @@ export interface RemoteLog {
   ip?: string;
   country?: string;
   ua?: string;
+}
+
+// ---------- cloud storage (cloud link vaults) ----------
+
+export type CloudType = 'webdav' | 's3' | 'gdrive';
+
+export interface CloudProfile {
+  id: string;
+  type: CloudType;
+  typeLabel: string;
+  name: string;
+  createdAt: string;
+  status: 'ready' | 'pending';
+  /** the account or bucket it is connected to */
+  account: string;
+  /** Google Drive: when the last sign-in finished */
+  connectedAt: string;
+  config: Record<string, string>;
+  /** which secrets are stored (they are never sent back) */
+  secretsSet: Record<string, boolean>;
+  isDefault: boolean;
+  /** vaults kept there */
+  vaults: number;
+}
+
+export const listClouds = (server: ServerProfile) =>
+  api<{ profiles: CloudProfile[]; googleRedirectUri: string }>(server, '/api/admin/storage', { auth: true });
+
+/** The address a recipient opens for a cloud link vault. */
+export const cloudLink = (serverUrl: string, vaultId: string) => `${serverUrl.replace(/\/+$/, '')}/v/${vaultId}`;
+
+/** Uploads one part of a cloud vault's encrypted blob, retrying a couple of times on network trouble. */
+export async function uploadPart(server: ServerProfile, vaultId: string, part: number, data: Uint8Array): Promise<void> {
+  const t = tokens.get(server.id);
+  if (!t) throw new ApiError('需要先登入這台伺服器的管理員', 'unauthorized', 401);
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 1500 * 2 ** (attempt - 1)));
+    let res: Response;
+    try {
+      res = await fetch(`${server.url}/api/admin/blob/${vaultId}/${part}`, {
+        method: 'PUT',
+        headers: { authorization: `Bearer ${t}`, 'content-type': 'application/octet-stream' },
+        body: data as Uint8Array<ArrayBuffer>,
+      });
+    } catch {
+      lastError = new ApiError('上傳時網路中斷', 'network', 0);
+      continue;
+    }
+    if (res.ok) return;
+    const d = (await res.json().catch(() => ({}))) as { message?: string; code?: string };
+    lastError = new ApiError(d.message ?? `上傳失敗（HTTP ${res.status}）`, d.code ?? 'error', res.status);
+    // the cloud storage hiccupped (5xx): worth another try; anything else will not get better
+    if (res.status < 500) break;
+  }
+  throw lastError!;
 }
