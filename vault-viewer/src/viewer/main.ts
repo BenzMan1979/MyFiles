@@ -1,11 +1,12 @@
 import './style.css';
 import { textToKey } from '../core/keytext';
-import { ChunkReader, readFile, readPayloadFromDocument, readPayloadFromHtml, type FileEntry, type Payload } from '../core/format';
+import { ChunkReader, readFile, readPayloadFromDocument, readPayloadFromHtml, type BlobSource, type FileEntry, type Payload } from '../core/format';
 import { formatSize } from '../core/mime';
 import { APP_NAME, openPageOf } from '../shared/config';
 import { clear, formatDateTime, h, saveBlob } from '../shared/dom';
 import { installAutoLock, installGuards, watermarkBackground, watermarkText } from './protect';
 import { GROUP_PREFIX, iconFor, PAGES_MIME, renderPages, renderPreview, usesContent } from './preview';
+import { loadRemoteVault, RemoteReader, remoteVaultId } from './remote';
 import { offlineLockedOut, unlockVault, UnlockError, type OpenedVault } from './unlock';
 
 const app = document.getElementById('app')!;
@@ -15,6 +16,8 @@ const embedded = !!document.getElementById('vault-header');
 let cachedKey: Uint8Array | null = null;
 
 function boot() {
+  const remoteId = embedded ? null : remoteVaultId();
+  if (remoteId) return void openLink(remoteId);
   if (!embedded) return showPicker();
   try {
     showUnlock(readPayloadFromDocument(document)!);
@@ -26,6 +29,18 @@ function boot() {
 function showFatal(message: string) {
   clear(app);
   app.append(h('div', { class: 'center-screen' }, h('div', { class: 'card' }, h('h1', null, APP_NAME), h('p', { class: 'error' }, message))));
+}
+
+// ---------- cloud link: https://<server>/v/<id> ----------
+
+async function openLink(id: string) {
+  clear(app);
+  app.append(h('div', { class: 'center-screen' }, h('div', { class: 'card' }, h('div', { class: 'spinner' }), h('p', { class: 'muted' }, '正在讀取封存檔…'))));
+  try {
+    showUnlock(await loadRemoteVault(id));
+  } catch (e) {
+    showFatal((e as Error).message);
+  }
 }
 
 // ---------- hosted page: pick a vault file ----------
@@ -147,7 +162,7 @@ function showUnlock(payload: Payload, notice?: string) {
     h('h1', null, header.title || '加密文件'),
     h('div', { class: 'chips' },
       header.mode === 'online'
-        ? h('span', { class: 'chip' }, '🌐 線上驗證', h('span', { class: 'muted' }, ` · ${hostOf(header.server)}`))
+        ? h('span', { class: 'chip' }, payload.remote ? '☁️ 雲端連結' : '🌐 線上驗證', h('span', { class: 'muted' }, ` · ${hostOf(header.server)}`))
         : h('span', { class: 'chip' }, '📴 離線封存'),
     ),
     notice ? h('p', { class: 'notice' }, notice) : null,
@@ -245,7 +260,9 @@ function showMain(payload: Payload, opened: OpenedVault) {
   const { manifest, contentKey, status } = opened;
   const prot = manifest.protection;
   const openedAt = new Date();
-  const reader = new ChunkReader(payload);
+  const remote = payload.remote && opened.blobPass ? new RemoteReader(header.server!, header.id, payload.remote, opened.blobPass) : null;
+  if (payload.remote && !remote) return showUnlock(payload, '伺服器沒有發出閱讀權限，請再試一次');
+  const reader: BlobSource = remote ?? new ChunkReader(payload);
   const cleanups: (() => void)[] = [];
   let disposePreview: (() => void) | null = null;
   let current: FileEntry | null = null;
@@ -358,8 +375,14 @@ function showMain(payload: Payload, opened: OpenedVault) {
     );
     if (prot.allowDownload && entry.mime !== PAGES_MIME) fileBar.append(h('button', { class: 'btn small', onclick: () => download(entry) }, '⬇ 下載'));
     clear(box);
-    box.append(h('div', { class: 'empty' }, h('div', { class: 'spinner' }), h('p', { class: 'muted' }, '解密中…')));
+    const busy = h('p', { class: 'muted' }, remote ? '正在從雲端讀取…' : '解密中…');
+    box.append(h('div', { class: 'empty' }, h('div', { class: 'spinner' }), busy));
     scroll.scrollTop = 0;
+    if (remote) {
+      remote.onProgress = (done, all) => {
+        if (seq === renderSeq && all > 2 * 1024 * 1024) busy.textContent = `正在從雲端讀取… ${Math.floor((done / all) * 100)}%（${formatSize(done)} / ${formatSize(all)}）`;
+      };
+    }
     try {
       if (entry.mime === PAGES_MIME) {
         clear(box);

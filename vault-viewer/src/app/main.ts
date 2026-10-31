@@ -7,6 +7,7 @@ import { settings } from '../shared/settings';
 import { serverInfo, servers } from './api';
 import { renderHelp } from './helpPage';
 import { renderHome } from './homePage';
+import { renderCloud } from './cloudPage';
 import { renderManage } from './managePage';
 import { renderServers } from './serverPage';
 import { toast } from './ui';
@@ -14,6 +15,7 @@ import { toast } from './ui';
 const ROUTES: { id: string; icon: string; label: string; render: (root: HTMLElement, rerender: () => void) => void }[] = [
   { id: 'home', icon: '🏠', label: '首頁', render: renderHome },
   { id: 'servers', icon: '🌐', label: '伺服器設定', render: renderServers },
+  { id: 'cloud', icon: '☁️', label: '雲端空間', render: renderCloud },
   { id: 'create', icon: '📦', label: '建立封存檔', render: renderCreate },
   { id: 'manage', icon: '📋', label: '管理封存檔', render: renderManage },
   { id: 'help', icon: '❓', label: '使用說明', render: renderHelp },

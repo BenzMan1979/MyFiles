@@ -2,6 +2,7 @@
 
 免安裝的加密文件檢視器。把一批文件加密成**一個 `.vault.html` 檔**，收件人雙擊就能用瀏覽器開啟，
 輸入**密碼＋金鑰**後，左邊是檔案列表、右邊是內容。可以限制期限、次數，加上浮水印，並隨時遠端收回。
+也可以改用**雲端連結**：加密後的內容放在你自己的 Google Drive、Nextcloud（WebDAV）或 Cloudflare R2，收件人打開網址就能看。
 
 這個 repo 只是**部署器**：程式碼和部署流程放這裡，實際的網站和伺服器跑在**每個人自己的 Cloudflare**，
 資料都在你自己的帳號裡。企劃與決策紀錄：[docs/PROPOSAL.md](docs/PROPOSAL.md)
@@ -98,7 +99,7 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
       "cloudflareSignup": "https://dash.cloudflare.com/sign-up",
       "cloudflareDashboard": "https://dash.cloudflare.com/"
     },
-    "limits": { "maxRecipients": 500, "maxTotalMB": 300, "phoneMB": 100, "minPasswordLength": 6 }, // phoneMB：超過就提醒手機可能打不開
+    "limits": { "maxRecipients": 500, "maxTotalMB": 300, "phoneMB": 100, "cloudMaxTotalMB": 2048, "minPasswordLength": 6 }, // phoneMB：超過就提醒手機可能打不開；cloudMaxTotalMB：雲端連結一份的上限
     "defaults": {                 // 打包精靈一開始的預設值
       "expiryDays": 30,           // null＝不限期
       "maxFailures": 5, "sessionMinutes": 30, "idleLockMinutes": 10, "blurLockSeconds": 0,
@@ -132,6 +133,14 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
 - 可以一次存到資料夾（Chrome／Edge）或下載成 ZIP
 - 統計圖表（管理頁最上方）：近 7／30／90 天的開啟與異常次數（和前一段期間比較）、每日開啟柱狀圖（可切成表格）、開啟地區與收件人排行、異常事件（密碼錯誤、被鎖定、收回或過期後仍有人嘗試）。以伺服器的開啟紀錄計算，紀錄預設保留 365 天（`LOG_RETENTION_DAYS`）
 - 管理頁：查看開啟次數、最後開啟時間、開啟紀錄（時間、地區、IP、瀏覽器、浮水印編號），可以收回、恢復、延長期限、調整次數、解除鎖定、刪除
+- **雲端連結**（「☁️ 雲端空間」頁，管理員登入後才能設定）：伺服器連到你自己的雲端空間，建立封存檔時在「交付方式」選「雲端連結」，每位收件人拿到一個網址（`https://你的伺服器/v/<編號>`），不用寄檔案
+  - 支援 **Google Drive**（用你自己在 Google Cloud 建立的 OAuth 用戶端，只要 `drive.file` 權限：只看得到它自己建立的檔案）、**WebDAV**（Nextcloud、Koofr、Synology、ownCloud…）、**S3 相容**（Cloudflare R2、Backblaze B2、Wasabi、MinIO…）；可以同時連好幾個，選一個當預設
+  - 雲端上只有加密後的內容，切成每段 32MB；收件人通過伺服器檢查（密碼＋金鑰、期限、次數、沒有收回）後，伺服器才從雲端轉給他，**只讀取他點開的檔案**，所以可以放比較大的內容（預設一份最大 2GB），手機也能開
+  - 收回後，正在看的人也讀不到還沒看過的檔案；刪除封存檔時，雲端上的檔案一起刪除
+  - 雲端的帳號、密碼、授權只存在你的伺服器（Durable Object），不會傳回打包器網頁
+  - 自己架的 Nextcloud 必須能從網際網路用 https 連到；放在家裡建議用 Cloudflare Tunnel
+  - Google Drive 的 OAuth 同意畫面請發布成「正式版」，留在「測試」狀態的授權每 7 天就會失效
+  - 要再加一種雲端（OneDrive、Dropbox…）：在 `server/src/storage/` 寫一個 adapter（實作 `test／prepare／put／get／remove` 五個方法），再登記到 `storage/index.ts`
 
 **檢視器**（就是封存檔本身）
 - 線上模式：伺服器檢查期限、次數、收回狀態，以及密碼錯誤鎖定；離線模式：記在本機，只能防君子
@@ -152,6 +161,7 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
 - 內容金鑰 = HKDF(Argon2id(密碼) ‖ 金鑰 ‖ 伺服器分片)，三樣缺一就解不開；伺服器自己也解不開
 - 伺服器只存「驗證用金鑰」（由密碼和金鑰推導，無法反推回去），開啟時用一次性挑戰值加 HMAC 驗證
 - 每個檔案各自用 AES-256-GCM 加密；檔名、收件人、使用條件都在加密的索引裡，竄改會被偵測
+- 雲端連結：雲端空間只存密文；伺服器在開啟成功後才發一張 12 小時的「閱讀通行證」，憑它才能分段讀取，收回或刪除時立即作廢
 
 已知限制：擋不住截圖和翻拍（所以有浮水印）；線上模式放行之後，懂技術的人可以把當下的內容存下來；
 **離線模式的次數與期限可以被繞過**（換電腦、換瀏覽器、改時鐘），只能防君子，需要確實限制請用線上模式。
@@ -174,7 +184,8 @@ src/core/       加密、封存格式、金鑰文字、MIME（打包器與檢視
 src/viewer/     檢視器：解鎖、樹狀列表、預覽、防護 → 建置成單一 HTML 模板
 src/app/        打包器：伺服器精靈、建立精靈、管理頁、說明
 src/shared/     共用樣式、DOM 工具、設定值（settings.ts）
-server/src/     Worker 與 Durable Object（hub.ts 為不依賴 Cloudflare 的核心邏輯）
+server/src/     Worker 與 Durable Object（hub.ts 為不依賴 Cloudflare 的核心邏輯；cloud.ts 管理雲端空間設定與 Google 授權）
+server/src/storage/  雲端空間 adapter：webdav.ts、s3.ts（含 AWS SigV4 簽章）、gdrive.ts；index.ts 登記可用的種類
 scripts/        建置與部署腳本（settings.mjs 讀參數，deploy-ci.mjs 是部署器）
 tests/          單元測試；tests/e2e/ 為瀏覽器端對端測試
 ```

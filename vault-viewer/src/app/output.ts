@@ -10,13 +10,18 @@ export interface RecipientOutput {
   password: string;
   keyText: string;
   keyFileText: string;
-  vault: Blob;
+  /** the .vault.html file; null for a cloud link vault */
+  vault: Blob | null;
   vaultName: string;
+  /** the address to open, for a cloud link vault */
+  link: string | null;
 }
 
 export interface BatchOutput {
   title: string;
   mode: 'online' | 'offline';
+  /** file = .vault.html files; cloud = links to vaults kept in a cloud storage */
+  delivery: 'file' | 'cloud';
   serverName: string | null;
   createdAt: string;
   expiresAt: string | null;
@@ -45,11 +50,13 @@ export function keyCardHtml(b: BatchOutput, it: RecipientOutput): string {
 <p><strong>金鑰文字</strong></p><p class="mono">${esc(it.keyText)}</p>
 <p class="muted">手機可以用相機掃描左邊的 QR Code 取得金鑰文字。</p></div></div></div>
 <h2>怎麼開啟</h2><ol>
-<li>在電腦上雙擊 <strong>${esc(it.vaultName)}</strong>，會用瀏覽器（建議 Chrome 或 Edge）打開。</li>
+${it.link
+    ? `<li>用瀏覽器（電腦或手機都可以）打開發送者給你的<strong>連結</strong>。</li>`
+    : `<li>在電腦上雙擊 <strong>${esc(it.vaultName)}</strong>，會用瀏覽器（建議 Chrome 或 Edge）打開。</li>`}
 <li>輸入發送者另外給你的<strong>密碼</strong>。</li>
-<li>貼上上面的<strong>金鑰文字</strong>，或選擇 .key 金鑰檔。</li>
+<li>貼上上面的<strong>金鑰文字</strong>，或選擇 .key 金鑰檔；手機可以按「📷 掃描 QR」掃左邊的 QR Code。</li>
 ${b.mode === 'online' ? '<li>開啟時需要連上網路（由伺服器驗證）。</li>' : ''}
-${b.phoneUrl ? `<li>手機打不開時，請改用 <a href="${esc(b.phoneUrl)}">${esc(b.phoneUrl)}</a> 選擇封存檔。</li>` : ''}</ol>
+${b.phoneUrl && !it.link ? `<li>手機打不開時，請改用 <a href="${esc(b.phoneUrl)}">${esc(b.phoneUrl)}</a> 選擇封存檔。</li>` : ''}</ol>
 <p class="warn">請妥善保管這張金鑰卡，不要和封存檔、密碼放在同一個地方。</p>
 </body></html>`;
 }
@@ -58,7 +65,7 @@ export function deliverySheetHtml(b: BatchOutput): string {
   const items = b.items
     .map(
       (it) => `<div class="card"><h2 style="margin-top:0;border:0">${esc(it.recipient)}</h2>
-<p>封存檔：<span class="mono">${esc(it.vaultName)}</span></p>
+${it.link ? `<p>連結：<a class="mono" href="${esc(it.link)}">${esc(it.link)}</a></p>` : `<p>封存檔：<span class="mono">${esc(it.vaultName)}</span></p>`}
 <p>密碼：<span class="mono">${esc(it.password)}</span></p>
 <div class="row"><div class="qr">${qrSvg(it.keyText)}</div><div style="flex:1;min-width:240px"><p>金鑰：</p><p class="mono">${esc(it.keyText)}</p></div></div></div>`,
     )
@@ -66,9 +73,11 @@ export function deliverySheetHtml(b: BatchOutput): string {
   return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>交付清單 - ${esc(b.title)}</title><style>${PAGE_CSS}</style></head><body>
 <h1>📋 交付清單：${esc(b.title)}</h1>
 <p class="warn"><strong>這份清單同時有密碼和金鑰，只給你自己看。</strong>請不要轉寄，用完建議刪除或妥善保存。</p>
-<p>建立時間：${formatDateTime(b.createdAt)}　模式：${b.mode === 'online' ? `線上驗證（${esc(b.serverName ?? '')}）` : '離線'}　到期：${b.expiresAt ? formatDateTime(b.expiresAt) : '不限'}　次數：${b.maxOpens ?? '不限'}</p>
+<p>建立時間：${formatDateTime(b.createdAt)}　模式：${b.mode === 'online' ? `線上驗證（${esc(b.serverName ?? '')}）` : '離線'}${b.delivery === 'cloud' ? '　交付：雲端連結' : ''}　到期：${b.expiresAt ? formatDateTime(b.expiresAt) : '不限'}　次數：${b.maxOpens ?? '不限'}</p>
 <h2>建議的交付方式（三樣東西分開傳）</h2><ol>
-<li><strong>封存檔</strong>（.vault.html）：用雲端硬碟連結或隨身碟。不建議用 Email 附件，公司信箱可能會擋。</li>
+${b.delivery === 'cloud'
+    ? '<li><strong>連結</strong>：可以用 Email 或通訊軟體傳。光有連結打不開，還要密碼和金鑰。</li>'
+    : '<li><strong>封存檔</strong>（.vault.html）：用雲端硬碟連結或隨身碟。不建議用 Email 附件，公司信箱可能會擋。</li>'}
 <li><strong>金鑰</strong>：把金鑰卡或 .key 檔用另一個管道給，例如通訊軟體。</li>
 <li><strong>密碼</strong>：再用第三個管道告訴對方，例如電話或簡訊。</li></ol>
 ${items}
@@ -81,7 +90,8 @@ function filesOf(b: BatchOutput): { path: string; data: Blob }[] {
   const out: { path: string; data: Blob }[] = [{ path: SHEET_NAME, data: new Blob([deliverySheetHtml(b)], { type: 'text/html' }) }];
   for (const it of b.items) {
     const dir = safeName(it.recipient);
-    out.push({ path: `${dir}/${it.vaultName}`, data: it.vault });
+    if (it.vault) out.push({ path: `${dir}/${it.vaultName}`, data: it.vault });
+    if (it.link) out.push({ path: `${dir}/連結.url`, data: new Blob([`[InternetShortcut]\r\nURL=${it.link}\r\n`], { type: 'text/plain' }) });
     out.push({ path: `${dir}/${safeName(it.recipient)}.key`, data: new Blob([it.keyFileText], { type: 'text/plain' }) });
     out.push({ path: `${dir}/金鑰卡.html`, data: new Blob([keyCardHtml(b, it)], { type: 'text/html' }) });
   }

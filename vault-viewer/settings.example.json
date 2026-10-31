@@ -14,6 +14,7 @@
       "maxRecipients": 500,
       "maxTotalMB": 300,
       "phoneMB": 100,
+      "cloudMaxTotalMB": 2048,
       "minPasswordLength": 6
     },
     "defaults": {

@@ -24,6 +24,8 @@ export class Hub extends DurableObject<Env> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    // A cloud link (/v/<vault id>) is the phone/online viewer page; it reads the id from the address.
+    if (/^\/v\/[a-z0-9]{1,64}\/?$/.test(url.pathname) && env.ASSETS) return viewerPage(env.ASSETS, url);
     if (!url.pathname.startsWith('/api/')) {
       if (env.ASSETS) return env.ASSETS.fetch(request);
       return new Response('隨身密閱伺服器運作中。請在「打包＋管理」頁面貼上這個網址。', {
@@ -38,3 +40,15 @@ export default {
     return stub.fetch(new Request(request, { headers }));
   },
 } satisfies ExportedHandler<Env>;
+
+/** Serves open.html under the link's own address (static asset hosting may redirect /open.html to /open). */
+async function viewerPage(assets: Fetcher, url: URL): Promise<Response> {
+  let res = await assets.fetch(new URL('/open.html', url).toString());
+  for (let i = 0; i < 2 && res.status >= 300 && res.status < 400 && res.headers.get('location'); i++) {
+    res = await assets.fetch(new URL(res.headers.get('location')!, url).toString());
+  }
+  const headers = new Headers(res.headers);
+  headers.set('cache-control', 'no-store');
+  headers.set('referrer-policy', 'no-referrer');
+  return new Response(res.body, { status: res.status, headers });
+}

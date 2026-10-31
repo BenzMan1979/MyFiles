@@ -136,7 +136,7 @@ describe('packer', () => {
 
   it('manages and revokes from the manage page', async () => {
     const p = await gotoPacker('manage');
-    await p.waitForSelector('table.table');
+    await p.waitForSelector('tr:has-text("王小明")'); // (the statistics panel has a hidden table of its own)
     await expect(p.locator('tr:has-text("王小明")').textContent()).resolves.toContain('1 / 2');
     // statistics: the one open above shows in the headline number, the chart and the table view
     await p.waitForSelector('.stats .tile');

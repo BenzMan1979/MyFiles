@@ -139,7 +139,7 @@ async function serveApi(hub: Hub, req: IncomingMessage, res: ServerResponse) {
   const noBody = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
   // the real Worker adds these from Cloudflare's connection data
   const headers = { ...(req.headers as Record<string, string>), 'x-vv-ip': req.socket.remoteAddress ?? '', 'x-vv-country': 'TW' };
-  const r = await hub.handle(new Request(`http://localhost${req.url}`, { method: req.method, headers, body: noBody ? undefined : body }));
+  const r = await hub.handle(new Request(`http://${req.headers.host ?? 'localhost'}${req.url}`, { method: req.method, headers, body: noBody ? undefined : body }));
   res.writeHead(r.status, Object.fromEntries(r.headers));
   res.end(Buffer.from(await r.arrayBuffer()));
 }
@@ -157,13 +157,18 @@ export async function startHub(adminPassword = 'admin-pass-123', env: Record<str
 }
 
 /** Pages and API on one address, like the deployed Worker: /api/* is the server, the rest is dist/. */
-export async function startSite(adminPassword: string | undefined = 'admin-pass-123'): Promise<{ url: string; server: Server }> {
-  const hub = new Hub(new MemoryStore(), adminPassword ? { ADMIN_PASSWORD: adminPassword } : {});
+export async function startSite(
+  adminPassword: string | undefined = 'admin-pass-123',
+  /** the cloud services the server talks to (fakes in tests), and the part size of cloud vaults */
+  cloud: { fetcher?: typeof fetch; partBytes?: number } = {},
+): Promise<{ url: string; server: Server }> {
+  const hub = new Hub(new MemoryStore(), adminPassword ? { ADMIN_PASSWORD: adminPassword } : {}, Date.now, cloud.fetcher, { partBytes: cloud.partBytes });
   const pages: Record<string, string> = { '/': 'dist/index.html', '/index.html': 'dist/index.html', '/open.html': 'dist/open.html' };
   const server = createServer((req, res) => {
     const path = (req.url ?? '/').split('?')[0];
     if (path.startsWith('/api/')) return void serveApi(hub, req, res);
-    const file = pages[path];
+    // a cloud link is the viewer page, like the Worker does
+    const file = /^\/v\/[a-z0-9]+\/?$/.test(path) ? 'dist/open.html' : pages[path];
     if (!file) return void res.writeHead(404).end('not found');
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(readFileSync(file));
   });
