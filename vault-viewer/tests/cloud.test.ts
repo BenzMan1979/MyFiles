@@ -301,7 +301,19 @@ describe('cloud link vaults on Google Drive', () => {
     expect(r.body.message).toContain('7 天');
   });
 
-  it('refuses a client id that is not a Google one', async () => {
+  it('says what to do when the Drive API is off or Drive was not ticked, and lets the sign-in be finished again', async () => {
+    google.apiDisabled = true;
+    const first = await connect();
+    expect(first.back.text).toContain('還沒有啟用「Google Drive API」');
+    expect((await call('GET', '/api/admin/storage', undefined, token)).body.profiles[0].status).toBe('pending');
+    google.apiDisabled = false;
+    google.grantedScope = 'openid';
+    expect((await connect()).back.text).toContain('沒有勾選「Google 雲端硬碟」');
+    google.grantedScope = 'https://www.googleapis.com/auth/drive.file';
+    expect((await connect()).back.text).toContain('已連結 Google Drive');
+  });
+
+    it('refuses a client id that is not a Google one', async () => {
     const r = await call('POST', '/api/admin/storage/google/start', { clientId: 'nope', clientSecret: 'x' }, token);
     expect(r.status).toBe(400);
   });

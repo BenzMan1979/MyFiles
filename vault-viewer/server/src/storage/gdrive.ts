@@ -7,7 +7,7 @@
 // Scope is drive.file: the server can only see files it created itself, nothing else in the Drive.
 // Layout: <folder>/<vaultId>/<00000.bin, …>; the container is the vault folder's id, refs are file ids.
 
-import { httpError, partName, StorageError, type Adapter, type AdapterDeps, type StorageProfile } from './types';
+import { partName, StorageError, type Adapter, type AdapterDeps, type StorageProfile } from './types';
 
 export const GOOGLE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -49,10 +49,44 @@ async function tokenRequest(d: AdapterDeps, form: Record<string, string>) {
   return data;
 }
 
+/**
+ * Turns an error from the Drive API into what to do about it. Google says why in the body
+ * (error.errors[].reason / error.details[].reason), e.g. the API is not enabled in the project.
+ */
+export async function googleError(what: string, res: Response): Promise<StorageError> {
+  let message = '';
+  const reasons: string[] = [];
+  try {
+    const e = ((await res.json()) as { error?: { message?: string; errors?: { reason?: string }[]; details?: { reason?: string }[]; status?: string } }).error;
+    message = e?.message ?? '';
+    for (const x of [...(e?.errors ?? []), ...(e?.details ?? [])]) if (x.reason) reasons.push(x.reason);
+    if (e?.status) reasons.push(e.status);
+  } catch {
+    /* not JSON */
+  }
+  const has = (...r: string[]) => r.some((x) => reasons.includes(x));
+  const head = `${what}失敗（HTTP ${res.status}）：`;
+  if (has('accessNotConfigured', 'SERVICE_DISABLED')) {
+    return new StorageError(`${head}這個 Google Cloud 專案還沒有啟用「Google Drive API」。請到 Google Cloud 的「API 和服務 → 程式庫」搜尋 Google Drive API 按「啟用」，等 1～2 分鐘後，回到打包器的「雲端空間」按「繼續連結」。`, 'drive_api_disabled');
+  }
+  if (has('insufficientPermissions', 'ACCESS_TOKEN_SCOPE_INSUFFICIENT', 'insufficientScopes')) {
+    return new StorageError(`${head}授權時沒有給「Google 雲端硬碟」的權限。請回到打包器的「雲端空間」按「繼續連結」，在 Google 的授權畫面勾選雲端硬碟那一項再按「繼續」。`, 'reauth');
+  }
+  if (has('storageQuotaExceeded')) return new StorageError(`${head}Google 雲端硬碟的空間已滿`);
+  if (has('rateLimitExceeded', 'userRateLimitExceeded', 'RATE_LIMIT_EXCEEDED')) return new StorageError(`${head}對 Google 的請求太頻繁，請稍後再試`);
+  if (has('downloadQuotaExceeded')) return new StorageError(`${head}這個檔案今天的下載次數已超過 Google 的上限，請明天再試`);
+  if (res.status === 404) return new StorageError(`${head}找不到檔案或資料夾（可能被手動刪除了）`);
+  return new StorageError(`${head}${message || 'Google 拒絕這個請求'}`);
+}
+
 /** Trades the code from Google's sign-in page for a refresh token. */
 export async function googleExchange(d: AdapterDeps, o: { clientId: string; clientSecret: string; code: string; redirectUri: string }) {
   const data = await tokenRequest(d, { client_id: o.clientId, client_secret: o.clientSecret, code: o.code, redirect_uri: o.redirectUri, grant_type: 'authorization_code' });
   if (typeof data.refresh_token !== 'string') throw new StorageError('Google 沒有給長期授權，請再試一次「連結 Google Drive」');
+  // Google lets the user untick permissions on the consent screen; without Drive there is nothing to do.
+  if (typeof data.scope === 'string' && !data.scope.split(' ').includes(GOOGLE_SCOPE)) {
+    throw new StorageError('授權時沒有勾選「Google 雲端硬碟」的權限。請回到打包器的「雲端空間」按「繼續連結」，在 Google 的授權畫面勾選雲端硬碟那一項再按「繼續」。', 'reauth');
+  }
   return { refreshToken: data.refresh_token, accessToken: String(data.access_token), accessExpires: d.now() + Number(data.expires_in ?? 3600) * 1000 };
 }
 
@@ -86,7 +120,7 @@ export function gdriveAdapter(p: StorageProfile, d: AdapterDeps): Adapter & { en
   };
 
   const json = async <T>(what: string, res: Response): Promise<T> => {
-    if (!res.ok) throw await httpError(what, res, { 403: 'Google 拒絕存取（Drive API 有啟用嗎？或已超過使用量上限）', 404: '找不到檔案或資料夾（可能被手動刪除了）' });
+    if (!res.ok) throw await googleError(what, res);
     return (await res.json()) as T;
   };
 
@@ -136,7 +170,7 @@ export function gdriveAdapter(p: StorageProfile, d: AdapterDeps): Adapter & { en
         headers: { 'content-type': 'application/json; charset=UTF-8', 'x-upload-content-type': 'application/octet-stream', 'x-upload-content-length': String(data.byteLength) },
         body: JSON.stringify({ name: partName(part), parents: [container], mimeType: 'application/octet-stream' }),
       });
-      if (!start.ok) throw await httpError('開始上傳到 Google Drive', start);
+      if (!start.ok) throw await googleError('開始上傳到 Google Drive', start);
       const session = start.headers.get('location');
       if (!session) throw new StorageError('Google Drive 沒有回傳上傳位址');
       let res: Response;
@@ -157,7 +191,7 @@ export function gdriveAdapter(p: StorageProfile, d: AdapterDeps): Adapter & { en
       const ids = container ? [container] : refs.slice(0, 30);
       for (const id of ids) {
         const res = await call(`${API}/files/${encodeURIComponent(id)}?supportsAllDrives=true`, { method: 'DELETE' });
-        if (!res.ok && res.status !== 404) throw await httpError('刪除 Google Drive 上的檔案', res);
+        if (!res.ok && res.status !== 404) throw await googleError('刪除 Google Drive 上的檔案', res);
       }
       return container ? [] : refs.slice(ids.length);
     },
