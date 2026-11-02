@@ -107,6 +107,17 @@ export function toLocalInput(iso: string | null): string {
 }
 export const fromLocalInput = (v: string): string | null => (v ? new Date(v).toISOString() : null);
 
+/**
+ * Marks a table so that on a phone each row turns into a small card ("label: value" lines) instead of
+ * a wide table that has to be scrolled sideways. The labels come from the header row.
+ */
+export function stackable<T extends HTMLTableElement>(table: T): T {
+  table.classList.add('stack');
+  const labels = Array.from(table.querySelectorAll('thead th'), (th) => th.textContent ?? '');
+  table.querySelectorAll('tbody tr').forEach((tr) => Array.from(tr.children).forEach((td, i) => td.setAttribute('data-label', labels[i] ?? '')));
+  return table;
+}
+
 export function section(title: string, ...children: (Node | string | null)[]) {
   return h('section', { class: 'card section' }, h('h2', null, title), ...children);
 }

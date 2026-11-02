@@ -2,6 +2,7 @@
 // daily opens (stacked with problems), where and who, and what went wrong.
 import { clear, h } from '../shared/dom';
 import { api, type ServerProfile } from './api';
+import { stackable } from './ui';
 
 export interface Counts { opens: number; resumes: number; issues: number }
 export interface DayStat extends Counts { date: string }
@@ -21,6 +22,8 @@ export interface Stats {
 
 const RANGES = [7, 30, 90];
 let selectedDays = 30;
+/** whether the charts block is open; kept so it stays open when the page redraws after an action */
+let statsOpen = false;
 
 export const ISSUE_LABEL: Record<string, { icon: string; text: string; cls: 'warn' | 'danger' }> = {
   bad_proof: { icon: '⚠️', text: '密碼或金鑰錯誤', cls: 'warn' },
@@ -101,7 +104,14 @@ export function statsPanel(server: ServerProfile): HTMLElement {
     const s = current!;
     clear(body);
     ro?.disconnect();
-    body.append(tiles(s), chartBlock(s), h('div', { class: 'stats-cols' }, rankBlock('開啟地區', s.countries, s.period.opens), rankBlock('收件人開啟排行', s.recipients, s.period.opens)), issuesBlock(s));
+    const more = h('details', { class: 'stats-more', open: statsOpen },
+      h('summary', null, '圖表、開啟地區與異常事件'),
+      chartBlock(s),
+      h('div', { class: 'stats-cols' }, rankBlock('開啟地區', s.countries, s.period.opens), rankBlock('收件人開啟排行', s.recipients, s.period.opens)),
+      issuesBlock(s),
+    );
+    more.addEventListener('toggle', () => { statsOpen = more.open; });
+    body.append(tiles(s), more);
     // The chart is drawn at the width it actually has, so text never gets stretched.
     const chart = body.querySelector<HTMLElement>('.chart-host');
     if (chart && typeof ResizeObserver !== 'undefined') {
@@ -286,7 +296,7 @@ function issuesBlock(s: Stats): HTMLElement {
     const l = issueLabel(i.kind);
     return h('span', { class: `chip ${l.cls}` }, `${l.icon} ${l.text} ${nf(i.count)}`);
   })));
-  wrap.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table small' },
+  wrap.append(h('div', { class: 'table-wrap' }, stackable(h('table', { class: 'table small' },
     h('thead', null, h('tr', null, ...['時間', '收件人', '狀況', '地區', 'IP'].map((x) => h('th', null, x)))),
     h('tbody', null, ...s.recent.map((r) => {
       const l = issueLabel(r.kind);
@@ -298,7 +308,7 @@ function issuesBlock(s: Stats): HTMLElement {
         h('td', null, h('span', { class: `chip ${l.cls}` }, `${l.icon} ${l.text}`)),
         h('td', null, r.country || '—'),
         h('td', { class: 'mono' }, r.ip || '—'));
-    })))));
+    }))))));
   if (s.period.issues > s.recent.length) wrap.append(h('p', { class: 'muted small' }, `只列出最近 ${s.recent.length} 筆；每份封存檔的完整紀錄請按下方的「紀錄」。`));
   return wrap;
 }

@@ -81,7 +81,8 @@ describe('cloud links: packer → Nextcloud (WebDAV) → recipient opens the lin
   });
 
   it('creates a vault delivered as a cloud link', async () => {
-    await p.click('.app-nav a:has-text("建立封存檔")');
+    await p.click('.app-nav a:has-text("封存檔")');
+    await p.click('.subnav a:has-text("建立")');
     const files = await Promise.all(sampleFiles().map(async (f) => ({ name: f.path.split('/').pop()!, mimeType: f.mime, buffer: Buffer.from(await f.read()) })));
     // make it span several 4 KB parts
     files.push({ name: 'big.txt', mimeType: 'text/plain', buffer: Buffer.from('雲端內容 cloud-secret\n'.repeat(1500)) });
@@ -133,7 +134,8 @@ describe('cloud links: packer → Nextcloud (WebDAV) → recipient opens the lin
   });
 
   it('revoking stops the link; deleting removes the files from the cloud', async () => {
-    await p.click('.app-nav a:has-text("管理封存檔")');
+    await p.click('.app-nav a:has-text("封存檔")');
+    await p.click('.subnav a:has-text("管理")');
     await p.waitForSelector('tr:has-text("王小明")');
     await expect(p.locator('tr:has-text("王小明") .chip:has-text("☁️")').count()).resolves.toBe(1);
     await p.click('tr:has-text("王小明") button:has-text("收回")');

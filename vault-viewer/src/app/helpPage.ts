@@ -1,13 +1,18 @@
 import { phoneViewerUrl } from './api';
 import { h } from '../shared/dom';
-import { section } from './ui';
 
 const qa = (q: string, ...a: (Node | string)[]) => h('details', { class: 'faq' }, h('summary', null, q), h('div', null, ...a));
 
-export function renderHelp(root: HTMLElement) {
-  root.append(
-    h('div', { class: 'page-head' }, h('h1', null, '❓ 使用說明')),
-    section('收件人怎麼開啟',
+/** One help topic: a heading that opens to show its text. */
+const topic = (title: string, ...body: (Node | string)[]) =>
+  h('details', { class: 'faq topic' }, h('summary', null, title), h('div', { class: 'topic-body' }, ...body));
+
+/** The help, as a block of the home page (the old #help address scrolls to it). */
+export function helpSection(): HTMLElement {
+  return h('section', { class: 'card section', id: 'help-section' },
+    h('h2', null, '❓ 使用說明'),
+    h('p', { class: 'muted' }, '點一個主題展開。'),
+    topic('收件人怎麼開啟',
       h('ol', { class: 'steps' },
         h('li', null, '電腦：雙擊 .vault.html，用 Chrome、Edge、Firefox 或 Safari 打開。'),
         h('li', null, '輸入密碼，貼上金鑰文字、選擇 .key 金鑰檔，或按「📷 掃描 QR」用相機掃金鑰卡，再按「解鎖」。'),
@@ -17,7 +22,7 @@ export function renderHelp(root: HTMLElement) {
         })(),
       ),
     ),
-    section('雲端連結：不用寄檔案，給一個網址就好',
+    topic('雲端連結：不用寄檔案，給一個網址就好',
       h('p', null, '到「☁️ 雲端空間」把伺服器連到你自己的 Google Drive、Nextcloud（或其他 WebDAV）、Cloudflare R2 等空間，建立封存檔時在「交付方式」選「雲端連結」。加密後的內容會放在你的雲端，每位收件人拿到一個網址。'),
       h('ul', null,
         h('li', null, '收件人用電腦或手機的瀏覽器打開網址，輸入密碼和金鑰就能看，不用下載檔案，也不需要雲端帳號。'),
@@ -26,7 +31,7 @@ export function renderHelp(root: HTMLElement) {
         h('li', null, '在「管理封存檔」刪除時，雲端上的檔案會一起刪除；只是收回的話，檔案保留，可以再恢復。'),
       ),
     ),
-    section('多人使用：Google 帳號＋驗證器登入',
+    topic('多人使用：Google 帳號＋驗證器登入',
       h('p', null, '到「👥 使用者與登入」把登入方式改成 Google 帳號＋驗證器 App（Google Authenticator、Microsoft Authenticator、1Password 等都可以）。之後每個人用自己的 Google 帳號登入，再輸入手機上的 6 位數驗證碼；登入一次，打包器和伺服器就都登入了。'),
       h('ul', null,
         h('li', null, h('strong', null, '誰可以登入'), '：只限名單（建議）、指定網域（例如公司的 @example.com 全部可以），或所有 Google 帳號（不建議）。'),
@@ -36,13 +41,13 @@ export function renderHelp(root: HTMLElement) {
         h('li', null, '收件人不受影響，開啟封存檔照樣不需要登入。'),
       ),
     ),
-    section('Word、Excel 可以直接放進去嗎',
+    topic('Word、Excel 可以直接放進去嗎',
       h('p', null, '可以：.docx 和 .xlsx 在封存檔裡可以直接預覽。Word 的版面可能和原本略有差異，Excel 只顯示儲存時的計算結果（沒有公式、圖表和圖片）。需要完整呈現、或是舊版的 .doc／.xls，請先另存成 PDF（或新版格式）再加入。'),
     ),
-    section('怎麼讓 PDF 完全不能複製文字',
+    topic('怎麼讓 PDF 完全不能複製文字',
       h('p', null, '在建立封存檔的第一步，加入 PDF 後會出現「把 PDF 轉成逐頁圖片」。開啟後，每一頁會變成圖片，封存檔裡完全沒有文字可以複製或搜尋。代價是檔案會大好幾倍，也不能下載原本的 PDF，所以只建議用在簡報或需要嚴格保護的文件。'),
     ),
-    section('PowerPoint 簡報怎麼處理',
+    topic('PowerPoint 簡報怎麼處理',
       h('p', null, '瀏覽器無法準確呈現 PowerPoint，請先轉成 PDF 再加入：'),
       h('ol', { class: 'steps' },
         h('li', null, '用 PowerPoint 打開簡報。'),
@@ -50,7 +55,7 @@ export function renderHelp(root: HTMLElement) {
         h('li', null, '把產生的 PDF 加進封存檔。版面、字型都會和 PowerPoint 一樣。'),
       ),
     ),
-    section('常見問題',
+    topic('常見問題',
       qa('打包器會把什麼存在哪裡？換一台電腦會看到我的資料嗎？', h('p', null, h('strong', null, '存在這台電腦的瀏覽器裡'), '：只有「伺服器清單」（名稱和網址）與預設是哪一台，另外登入後的憑證只留在這個分頁，關掉分頁就沒了。管理員密碼、你的文件、封存檔、收件人的密碼和金鑰，都不會存在瀏覽器。'), h('p', null, h('strong', null, '存在你的伺服器（Cloudflare）'), '：每份線上封存檔的編號、名稱、收件人、使用條件、已開啟次數、開啟紀錄，以及用來驗證的資料（伺服器看不出密碼、金鑰，也解不開文件）。文件本身不會上傳。'), h('p', null, h('strong', null, '不存在任何地方'), '：收件人的密碼、金鑰和封存檔，只在你按下「產生」的那一刻出現，請當場下載或存好「交付清單」。關掉頁面後沒有任何地方可以再找回來，要重新建立。'), h('p', null, h('strong', null, '換一台電腦（或無痕視窗）'), '：伺服器清單會是空的，重新填一次伺服器網址並登入管理員，「管理封存檔」就會看到所有封存檔與統計，因為它們都在伺服器上。若這個打包器就是從你的伺服器網址開的，網址會自動帶入，只要輸入管理員密碼。')),
       qa('管理員密碼被改掉或忘記了怎麼辦？', h('p', null, '用「部署時填的那組管理員密碼」登入，它永遠有效，是備用鑰匙；登入後到「伺服器設定 → 更換管理員密碼」重設即可。這組密碼存在 Cloudflare 的 Worker 設定（變數和機密裡的 ADMIN_PASSWORD），也請自己另外記好。')),
       qa('忘記密碼或弄丟金鑰怎麼辦？', h('p', null, '沒有辦法救回，這是加密的本質（連你的伺服器也解不開）。請重新建立一份封存檔，並在管理頁收回舊的那份。')),

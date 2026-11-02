@@ -1,6 +1,7 @@
 import { APP_NAME } from '../shared/config';
 import { h } from '../shared/dom';
 import { phoneViewerUrl, servers, tokens } from './api';
+import { helpSection } from './helpPage';
 import { section } from './ui';
 
 export function renderHome(root: HTMLElement) {
@@ -21,6 +22,7 @@ export function renderHome(root: HTMLElement) {
     h('div', { class: 'page-head' },
       h('h1', null, `歡迎使用 ${APP_NAME}`),
       h('p', { class: 'muted' }, '把文件加密成一個檔案，對方雙擊就能用瀏覽器開啟。需要密碼＋金鑰才能看，還可以限制期限、次數，隨時收回。'),
+      h('a', { class: 'btn small', href: '#help' }, '❓ 使用說明與常見問題 ↓'),
     ),
     h('div', { class: 'home-grid' },
       card('1', '🌐', '設定伺服器', '只要做一次。使用線上模式（可收回、可限制次數）需要它。只做離線封存可以跳過。', '#servers', s ? '查看' : '開始設定', serverState),
@@ -40,6 +42,7 @@ export function renderHome(root: HTMLElement) {
           u ? h('a', { href: u, target: '_blank', rel: 'noopener' }, '線上檢視頁') : '線上檢視頁（設定好伺服器後就有）', '選擇封存檔，解密一樣只在手機上進行。');
       })(),
     ),
+    helpSection(),
     location.protocol.startsWith('http')
       ? section('離線使用打包器',
           h('p', { class: 'muted' }, '這個頁面也可以存到電腦上，之後不用連到這個網址也能打包（線上模式仍需要連到你的伺服器）。'),

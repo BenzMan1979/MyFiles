@@ -77,7 +77,7 @@ describe('sign in with Google + authenticator', () => {
     await p.click('dialog button:has-text("新增")');
     await p.waitForSelector('tr:has-text("amy@gmail.com")');
     await shot(p, '02-users');
-    await p.click('.app-nav a:has-text("伺服器設定")');
+    await p.click('.subnav a:has-text("伺服器")');
     await expect(p.locator('.server-card').textContent()).resolves.toContain('已登入：boss@gmail.com（擁有者）');
     await expect(p.locator('.server-card button:has-text("更換管理員密碼")').count()).resolves.toBe(0);
     await p.context().close();
@@ -97,9 +97,10 @@ describe('sign in with Google + authenticator', () => {
     await p.click('.card.gate button:has-text("用 Google 登入")');
     await enroll(p);
     await p.waitForSelector('.app-nav');
-    await p.click('.app-nav a:has-text("使用者與登入")');
+    await p.click('.app-nav a:has-text("設定")');
+    await p.click('.subnav a:has-text("使用者與登入")');
     await p.waitForSelector('text=登入方式與使用者名單由擁有者管理');
-    await p.click('.app-nav a:has-text("雲端空間")');
+    await p.click('.subnav a:has-text("雲端空間")');
     await p.waitForSelector('text=雲端空間由擁有者連結和管理');
     await p.context().close();
   });

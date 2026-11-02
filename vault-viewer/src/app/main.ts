@@ -6,7 +6,6 @@ import { randomId } from '../core/keytext';
 import { settings } from '../shared/settings';
 import { authMode, login, serverInfo, servers, tokens } from './api';
 import { finishGoogleLogin, googleLoginBody, isGoogleReturn } from './googleLogin';
-import { renderHelp } from './helpPage';
 import { renderHome } from './homePage';
 import { renderCloud } from './cloudPage';
 import { renderManage } from './managePage';
@@ -14,15 +13,24 @@ import { renderServers } from './serverPage';
 import { renderUsers } from './usersPage';
 import { toast } from './ui';
 
-const ROUTES: { id: string; icon: string; label: string; render: (root: HTMLElement, rerender: () => void) => void }[] = [
-  { id: 'home', icon: '🏠', label: '首頁', render: renderHome },
-  { id: 'servers', icon: '🌐', label: '伺服器設定', render: renderServers },
-  { id: 'cloud', icon: '☁️', label: '雲端空間', render: renderCloud },
-  { id: 'create', icon: '📦', label: '建立封存檔', render: renderCreate },
-  { id: 'manage', icon: '📋', label: '管理封存檔', render: renderManage },
-  { id: 'users', icon: '👥', label: '使用者與登入', render: renderUsers },
-  { id: 'help', icon: '❓', label: '使用說明', render: renderHelp },
+// Every page keeps its own address (#create, #servers, ...), so links between pages and the return
+// from Google sign-in work as before. The menu only shows the four groups; a group with several
+// pages shows them as tabs at the top of the page (`short` is the tab's label).
+const ROUTES: { id: string; label: string; short: string; render: (root: HTMLElement, rerender: () => void) => void }[] = [
+  { id: 'home', label: '首頁', short: '首頁', render: renderHome },
+  { id: 'create', label: '建立封存檔', short: '建立', render: renderCreate },
+  { id: 'manage', label: '管理封存檔', short: '管理', render: renderManage },
+  { id: 'servers', label: '伺服器設定', short: '伺服器', render: renderServers },
+  { id: 'cloud', label: '雲端空間', short: '雲端空間', render: renderCloud },
+  { id: 'users', label: '使用者與登入', short: '使用者與登入', render: renderUsers },
 ];
+const GROUPS: { id: string; icon: string; label: string; routes: string[] }[] = [
+  { id: 'home', icon: '🏠', label: '首頁', routes: ['home'] },
+  { id: 'vaults', icon: '📦', label: '封存檔', routes: ['create', 'manage'] },
+  { id: 'settings', icon: '⚙️', label: '設定', routes: ['servers', 'cloud', 'users'] },
+];
+/** the page each group opens on: the one visited last, else its first */
+const lastIn: Record<string, string> = {};
 
 const app = document.getElementById('app')!;
 const nav = h('nav', { class: 'app-nav' });
@@ -70,14 +78,34 @@ function gate(): boolean {
 function render() {
   if (gate()) return;
   shell.classList.remove('gated');
-  const id = location.hash.replace('#', '') || 'home';
+  const asked = location.hash.replace('#', '') || 'home';
+  // the help is part of the home page now; the old #help address still works and scrolls to it
+  const id = asked === 'help' ? 'home' : asked;
   const route = ROUTES.find((r) => r.id === id) ?? ROUTES[0];
+  const group = GROUPS.find((g) => g.routes.includes(route.id))!;
+  lastIn[group.id] = route.id;
   clear(nav);
-  for (const r of ROUTES) nav.append(h('a', { href: `#${r.id}`, class: r === route ? 'active' : '' }, h('span', null, r.icon), ' ', r.label));
+  for (const g of GROUPS) {
+    nav.append(h('a', { href: `#${lastIn[g.id] ?? g.routes[0]}`, class: g === group ? 'active' : '', 'aria-current': g === group ? 'page' : null },
+      h('span', { class: 'nav-icon' }, g.icon), h('span', { class: 'nav-label' }, g.label)));
+  }
   clear(main);
   const page = h('div', { class: 'page' });
+  if (group.routes.length > 1) {
+    page.append(h('nav', { class: 'subnav', 'aria-label': group.label },
+      ...group.routes.map((id) => {
+        const r = ROUTES.find((x) => x.id === id)!;
+        return h('a', { href: `#${id}`, class: r === route ? 'active' : '', 'aria-current': r === route ? 'page' : null }, r.short);
+      })));
+  }
   main.append(page);
   route.render(page, render);
+  // in a group the tab already names the page: keep the heading for screen readers, not on screen twice
+  if (group.routes.length > 1) {
+    const h1 = page.querySelector('.page-head h1');
+    if (h1?.textContent?.includes(route.label)) h1.classList.add('sr-only');
+  }
+  if (asked === 'help') requestAnimationFrame(() => document.getElementById('help-section')?.scrollIntoView({ block: 'start' }));
   document.title = `${route.label} · ${APP_NAME} 打包器`;
 }
 

@@ -3,7 +3,7 @@ import { api, cloudLink, isOwner, servers, tokens, type RemoteLog, type RemoteVa
 import { removeVault } from './createPage';
 import { loginDialog } from './serverPage';
 import { statsPanel } from './statsView';
-import { confirmDialog, copyButton, fromLocalInput, modal, section, toast, toLocalInput } from './ui';
+import { confirmDialog, copyButton, fromLocalInput, modal, stackable, toast, toLocalInput } from './ui';
 
 let selectedServer = '';
 /** owners: show only the vaults made by this person ('' = everyone) */
@@ -19,6 +19,16 @@ function statusOf(v: RemoteVault, now: number): { label: string; cls: string } {
   if (v.policy.notBefore && now < Date.parse(v.policy.notBefore)) return { label: '尚未開始', cls: '' };
   return { label: '有效', cls: 'ok' };
 }
+
+/** Which filter tab a vault belongs to: needs attention / working / finished. */
+type Group = 'attention' | 'active' | 'ended';
+function groupOf(v: RemoteVault, now: number): Group {
+  const st = statusOf(v, now).label;
+  if (st === '已鎖定' || st === '上傳未完成') return 'attention';
+  if (st === '有效' || st === '尚未開始') return 'active';
+  return 'ended';
+}
+let statusFilter: '' | Group = '';
 
 const EVENT_LABEL: Record<string, string> = {
   open: '✅ 開啟',
@@ -86,23 +96,47 @@ async function load(server: ServerProfile, body: HTMLElement, rerender: () => vo
   if (!creators.includes(creatorFilter)) creatorFilter = '';
   const who = h('select', { class: 'input narrow' }, h('option', { value: '' }, `所有人（${creators.length}）`), ...creators.map((c) => h('option', { value: c, selected: c === creatorFilter }, c)));
   const listEl = h('div');
+  const count = (g: '' | Group) => data.vaults.filter((v) => !g || groupOf(v, now) === g).length;
+  const TABS: { id: '' | Group; label: string }[] = [
+    { id: '', label: '全部' },
+    { id: 'attention', label: '需處理' },
+    { id: 'active', label: '有效' },
+    { id: 'ended', label: '已結束' },
+  ];
+  const tabs = h('div', { class: 'seg', role: 'group', 'aria-label': '依狀態篩選' });
+  const drawTabs = () => {
+    clear(tabs);
+    for (const t of TABS) {
+      tabs.append(h('button', { type: 'button', class: `seg-btn${t.id === statusFilter ? ' on' : ''}${t.id === 'attention' && count('attention') ? ' alert' : ''}`, 'aria-pressed': t.id === statusFilter, onclick: () => { statusFilter = t.id; drawTabs(); draw(); } }, `${t.label} ${count(t.id)}`));
+    }
+  };
+  const summary = h('p', { class: 'muted small list-count' });
   const draw = () => {
     clear(listEl);
     const q = search.value.trim().toLowerCase();
+    let people = 0;
     for (const vaults of batches.values()) {
-      const shown = vaults.filter((v) => (!q || `${v.title} ${v.recipient}`.toLowerCase().includes(q)) && (!creatorFilter || creatorLabel(v) === creatorFilter));
+      const shown = vaults.filter((v) => (!q || `${v.title} ${v.recipient}`.toLowerCase().includes(q)) && (!creatorFilter || creatorLabel(v) === creatorFilter) && (!statusFilter || groupOf(v, now) === statusFilter));
       if (!shown.length) continue;
+      people += shown.length;
       listEl.append(batchCard(server, vaults[0].title, shown, now, rerender, showCreator));
     }
     if (!listEl.childNodes.length) listEl.append(h('p', { class: 'muted' }, '找不到符合的封存檔'));
+    summary.textContent = people ? `顯示 ${listEl.childNodes.length} 組封存檔、${people} 位收件人` : '';
   };
+  drawTabs();
   search.addEventListener('input', draw);
   who.addEventListener('change', () => {
     creatorFilter = who.value;
     draw();
   });
   draw();
-  body.append(statsPanel(server), showCreator ? h('div', { class: 'toolbar' }, h('span', null, '建立者：'), who, search) : search, listEl);
+  body.append(
+    statsPanel(server),
+    h('div', { class: 'list-filters' }, tabs, showCreator ? h('div', { class: 'toolbar' }, h('span', null, '建立者：'), who, search) : search),
+    summary,
+    listEl,
+  );
 }
 
 function batchCard(server: ServerProfile, title: string, vaults: RemoteVault[], now: number, rerender: () => void, showCreator = false) {
@@ -143,13 +177,17 @@ function batchCard(server: ServerProfile, title: string, vaults: RemoteVault[], 
     );
   });
   const created = vaults.reduce((a, v) => (v.createdAt < a ? v.createdAt : a), vaults[0].createdAt);
-  return section(`${title || '（未命名）'}`,
-    h('p', { class: 'muted small' }, `建立於 ${formatDateTime(created)} · ${vaults.length} 位收件人${showCreator ? ` · 建立者：${creatorLabel(vaults[0])}` : ''}`),
+  return h('section', { class: 'card section batch' },
+    h('div', { class: 'batch-head' },
+      h('h2', null, title || '（未命名）'),
+      h('span', { class: 'batch-date muted small', title: '建立時間' }, formatDateTime(created)),
+    ),
+    h('p', { class: 'muted small' }, `${vaults.length} 位收件人${showCreator ? ` · 建立者：${creatorLabel(vaults[0])}` : ''}`),
     h('div', { class: 'table-wrap' },
-      h('table', { class: 'table' },
+      stackable(h('table', { class: 'table' },
         h('thead', null, h('tr', null, ...['收件人', '狀態', '已開啟', '到期', '最後開啟', ''].map((t) => h('th', null, t)))),
         h('tbody', null, ...rows),
-      ),
+      )),
     ),
     vaults.length > 1
       ? h('div', { class: 'row-buttons' },
@@ -211,7 +249,7 @@ async function showLogs(server: ServerProfile, v: RemoteVault) {
     clear(box);
     if (!logs.length) box.append(h('p', { class: 'muted' }, '還沒有任何紀錄'));
     else
-      box.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table small' },
+      box.append(h('div', { class: 'table-wrap' }, stackable(h('table', { class: 'table small' },
         h('thead', null, h('tr', null, ...['時間', '事件', '編號', '地區', 'IP', '瀏覽器'].map((t) => h('th', null, t)))),
         h('tbody', null, ...logs.map((l) => h('tr', null,
           h('td', null, formatDateTime(l.t)),
@@ -221,7 +259,7 @@ async function showLogs(server: ServerProfile, v: RemoteVault) {
           h('td', { class: 'mono' }, l.ip || '—'),
           h('td', null, browserOf(l.ua)),
         ))),
-      )));
+      ))));
   } catch (e) {
     clear(box);
     box.append(h('p', { class: 'error' }, (e as Error).message));

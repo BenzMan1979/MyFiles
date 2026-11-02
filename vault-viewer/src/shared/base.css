@@ -4,12 +4,14 @@
   --surface-2: #f0f2f5;
   --border: #dde1e7;
   --text: #1c2330;
-  --muted: #667085;
-  --accent: #2f6fde;
+  --muted: #5f6a7d;
+  --accent: #2a64cc;
   --accent-text: #ffffff;
   --accent-soft: #e5eefc;
-  --ok: #1e8a4c;
-  --warn: #b26b00;
+  --ok: #187a42;
+  --on-ok: #ffffff;
+  --on-danger: #ffffff;
+  --warn: #9a5b00;
   --warn-soft: #fff4e0;
   --danger: #c9372c;
   --danger-soft: #fdecea;
@@ -25,10 +27,12 @@
     --border: #2f3744;
     --text: #e6e9ef;
     --muted: #9aa4b2;
-    --accent: #5b8ff0;
+    --accent: #6b9bf5; /* a touch lighter so it reads on the tinted accent background (4.5:1) */
     --accent-text: #0d1320;
     --accent-soft: #1f2d48;
     --ok: #4cc584;
+    --on-ok: #0d1320;
+    --on-danger: #0d1320;
     --warn: #f0b04a;
     --warn-soft: #3a2c12;
     --danger: #f07167;
@@ -51,7 +55,7 @@ h3 { font-size: 15px; margin: 0 0 6px; }
 a { color: var(--accent); }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
-.error { color: var(--danger); min-height: 1em; margin: 6px 0; }
+.error { color: var(--danger); background: var(--danger-soft); border-radius: 8px; padding: 8px 12px; min-height: 1em; margin: 10px 0; }
 .error:empty { display: none; }
 .spacer { flex: 1; }
 .btn {
@@ -63,7 +67,7 @@ a { color: var(--accent); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
 .btn.danger { color: var(--danger); }
-.btn.danger.solid { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn.danger.solid { background: var(--danger); border-color: var(--danger); color: var(--on-danger); }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--accent); }
 .btn.small { padding: 4px 10px; font-size: 13px; }
 .btn.wide { width: 100%; padding: 11px; font-size: 16px; }
@@ -98,3 +102,4 @@ textarea.input { resize: vertical; }
 .dropzone.over, .dropzone:hover { border-color: var(--accent); background: var(--accent-soft); }
 .dropzone p { margin: 4px 0; }
 [hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

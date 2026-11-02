@@ -326,7 +326,12 @@ function showMain(payload: Payload, opened: OpenedVault) {
   const scroll = h('div', { class: 'preview-scroll protected' }, box);
   const overlay = h('div', { class: 'watermark', 'aria-hidden': 'true' });
   const content = h('main', { class: 'content' }, fileBar, h('div', { class: 'stage' }, scroll, overlay));
-  const shell = h('div', { class: 'shell' }, topbar, h('div', { class: 'body' }, side, content));
+  const bodyEl = h('div', { class: 'body' }, side, content);
+  // on a phone the file list is a drawer: tapping the dimmed area beside it closes it
+  bodyEl.addEventListener('click', (e) => {
+    if (e.target === bodyEl) shell.classList.remove('show-side');
+  });
+  const shell = h('div', { class: 'shell' }, topbar, bodyEl);
   app.append(shell);
 
   if (prot.watermark.enabled) {
