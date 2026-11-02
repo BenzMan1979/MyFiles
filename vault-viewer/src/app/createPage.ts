@@ -10,7 +10,7 @@ import { decodeCsv, parseRecipients, templateCsv } from './csv';
 import { settings } from '../shared/settings';
 import { canPickFolder, downloadKeyCard, downloadSheet, downloadZip, safeName, saveToFolder, type BatchOutput } from './output';
 import { loginDialog } from './serverPage';
-import { confirmDialog, copyButton, field, fromLocalInput, modal, qrElement, section, toast, toggle, toLocalInput } from './ui';
+import { confirmDialog, copyButton, columns, field, fromLocalInput, modal, qrElement, section, toast, toggle, toLocalInput } from './ui';
 
 const SIZE_LIMIT = settings.limits.maxTotalMB * 1024 * 1024;
 const CLOUD_LIMIT = settings.limits.cloudMaxTotalMB * 1024 * 1024;
@@ -82,6 +82,13 @@ const isCloud = () => draft.mode === 'online' && draft.delivery === 'cloud';
 let stepIndex = 0;
 let lastOutput: BatchOutput | null = null;
 
+/** which of a step's blocks go in which column when the screen is wide (by position; keep each column a run of neighbours so the stacked order on a phone stays the same) */
+const STEP_COLUMNS: Record<number, number[][]> = {
+  1: [[0, 1], [2]],
+  2: [[0], [1, 2]],
+  3: [[0], [1, 2]],
+  5: [[0], [1]],
+};
 const STEPS = ['選擇檔案', '基本設定', '使用條件', '防護設定', '收件人', '產生'];
 
 export function renderCreate(root: HTMLElement, rerender: () => void) {
@@ -100,6 +107,14 @@ export function renderCreate(root: HTMLElement, rerender: () => void) {
   const err = h('p', { class: 'error', role: 'alert' });
   const pages = [stepFiles, stepBasics, stepPolicy, stepProtection, stepRecipients, stepGenerate];
   pages[stepIndex](body, rerender);
+  // wide screens: the blocks of a step sit in two columns (a step whose blocks don't match stays in one)
+  const groups = STEP_COLUMNS[stepIndex];
+  const kids = Array.from(body.children);
+  if (groups && groups.flat().length === kids.length) {
+    const grid = columns(...groups.map((g) => g.map((i) => kids[i])));
+    body.replaceChildren(...grid.children);
+    body.classList.add('two-col');
+  }
   const next = h('button', { class: 'btn primary' }, stepIndex === STEPS.length - 2 ? '下一步：確認並產生 →' : '下一步 →');
   next.addEventListener('click', () => {
     const problem = validate(stepIndex);
@@ -804,14 +819,13 @@ function renderResult(root: HTMLElement, b: BatchOutput, rerender: () => void) {
   root.append(
     h('div', { class: 'page-head' }, h('h1', null, '✅ 封存檔已產生'), h('p', { class: 'muted' }, `「${b.title}」共 ${b.items.length} 份。`)),
     h('p', { class: 'note warn' }, '⚠️ 密碼和金鑰只會顯示在這一頁。離開前請先儲存（儲存的資料夾或 ZIP 裡會有一份「交付清單」，只給你自己看）。'),
-    section('儲存',
+    columns([section('儲存',
       h('div', { class: 'row-buttons' }, folderBtn, zipBtn, h('button', { class: 'btn', onclick: () => downloadSheet(b) }, '📋 只下載交付清單')),
       saveStatus,
       h('p', { class: 'hint' }, b.delivery === 'cloud'
         ? '資料夾內容：交付清單、每位收件人一個資料夾（連結捷徑、.key 金鑰檔、可列印的金鑰卡）。封存檔本身已經在你的雲端空間裡。'
         : '資料夾內容：交付清單、每位收件人一個資料夾（封存檔、.key 金鑰檔、可列印的金鑰卡）。'),
-    ),
-    section('怎麼交給收件人（三樣東西分開傳）',
+    )], [section('怎麼交給收件人（三樣東西分開傳）',
       h('ol', { class: 'steps' },
         b.delivery === 'cloud'
           ? h('li', null, h('strong', null, '連結'), '：用 Email 或通訊軟體都可以。光有連結打不開，還需要密碼和金鑰；收件人用電腦或手機的瀏覽器打開即可。')
@@ -819,8 +833,8 @@ function renderResult(root: HTMLElement, b: BatchOutput, rerender: () => void) {
         h('li', null, h('strong', null, '金鑰'), '：金鑰卡、.key 檔或金鑰文字，用另一個管道（例如通訊軟體）。'),
         h('li', null, h('strong', null, '密碼'), '：再用第三個管道，例如電話或簡訊。'),
       ),
-    ),
-    ...rows,
+    )]),
+    h('div', { class: 'result-list' }, ...rows),
     h('div', { class: 'nav-buttons' },
       h('span'),
       h('button', {

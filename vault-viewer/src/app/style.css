@@ -15,7 +15,21 @@
 .subnav a:hover { color: var(--text); }
 .subnav a.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 .app-main { flex: 1; min-width: 0; }
-.page { max-width: 920px; margin: 0 auto; padding: 28px 24px 60px; }
+/* the page grows with the window (up to a readable limit); lines of text stay a comfortable length */
+.page { max-width: 1600px; margin: 0 auto; padding: 28px 32px 60px; }
+.page-head p { max-width: 90ch; }
+/* blocks side by side on a wide screen, stacked on a narrow one */
+.two-col { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+.two-col > .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.two-col .section { margin: 0; }
+@media (min-width: 1360px) {
+  .two-col:not(.solo) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.result-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 600px), 1fr)); gap: 16px; margin: 16px 0; align-items: start; }
+.result-list .result-card { margin: 0; }
+.topic-body, details.faq > div { max-width: 90ch; }
+/* single form fields stay a sensible length however wide the window is */
+.field > .input, .field > textarea.input { max-width: 720px; }
 .page-head { margin-bottom: 18px; }
 .page-head h1 { font-size: 26px; }
 .section { margin: 16px 0; }
@@ -47,7 +61,7 @@ select.input { padding-right: 28px; }
 .check { display: flex; align-items: center; gap: 6px; margin: 4px 0 10px; }
 
 /* home */
-.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 16px; }
 .home-card { position: relative; color: var(--text); text-decoration: none; display: flex; flex-direction: column; gap: 4px; }
 .home-card:hover { border-color: var(--accent); }
 .home-card .btn { align-self: flex-start; margin-top: auto; }
@@ -56,6 +70,7 @@ select.input { padding-right: 28px; }
 
 /* wizard */
 .wizard { display: flex; flex-direction: column; gap: 14px; }
+@media (min-width: 1360px) { .wizard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; } }
 .step { display: flex; gap: 16px; }
 .step-num { flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: var(--accent-text); display: flex; align-items: center; justify-content: center; font-weight: 700; }
 .step-body { flex: 1; min-width: 0; }

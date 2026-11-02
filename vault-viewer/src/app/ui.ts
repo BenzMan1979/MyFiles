@@ -118,6 +118,15 @@ export function stackable<T extends HTMLTableElement>(table: T): T {
   return table;
 }
 
+/**
+ * Lays blocks out in columns on a wide screen (one stacked column on a narrow one). Each argument is
+ * the list of blocks for one column; empty columns are dropped.
+ */
+export function columns(...cols: (Node | null)[][]): HTMLElement {
+  const used = cols.map((c) => c.filter((n): n is Node => !!n)).filter((c) => c.length);
+  return h('div', { class: `two-col${used.length < 2 ? ' solo' : ''}` }, ...used.map((c) => h('div', { class: 'col' }, ...c)));
+}
+
 export function section(title: string, ...children: (Node | string | null)[]) {
   return h('section', { class: 'card section' }, h('h2', null, title), ...children);
 }
