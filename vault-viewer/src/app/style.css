@@ -66,7 +66,14 @@ details.more { margin-top: 12px; }
 .section.here { border-color: var(--ok); }
 details.more summary, details.faq summary { cursor: pointer; color: var(--accent); }
 details.faq { border-bottom: 1px solid var(--border); padding: 10px 0; }
+/* the home page's link down to the help */
+.page-head .btn { margin-top: 6px; }
 details.faq summary { color: var(--text); font-weight: 600; }
+details.faq.topic > summary { font-size: 16px; }
+.topic-body { padding: 8px 0 4px; }
+.topic-body details.faq { padding-left: 4px; }
+.topic-body details.faq:last-child { border-bottom: 0; }
+#help-section { scroll-margin-top: 12px; }
 
 .server-card { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; padding: 14px 0; border-bottom: 1px solid var(--border); }
 .server-card:last-of-type { margin-bottom: 14px; }

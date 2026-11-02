@@ -49,7 +49,9 @@ describe('packer served by the server itself (one address for pages and API)', (
     for (const t of ['編輯', '移除', '更換管理員密碼']) expect(await p.locator(`.server-card button:has-text("${t}")`).isVisible()).toBe(true);
     await p.screenshot({ path: join(OUT, 'own-server.png') });
     // the phone link is this very site
-    await p.click('.app-nav a:has-text("使用說明")');
+    // the help lives on the home page, in expandable topics
+    await p.click('.app-nav a:has-text("首頁")');
+    await p.click('#help-section summary:has-text("收件人怎麼開啟")');
     await p.waitForSelector(`a[href="${site.url}/open.html"]`);
     // removing it on purpose keeps it removed after a reload
     await p.click('.app-nav a:has-text("設定")');
