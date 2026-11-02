@@ -2,6 +2,7 @@
 // The Durable Object (index.ts) just passes its storage in; there is exactly one Hub, so every
 // counter update is serialised and strongly consistent.
 
+import { Auth, type Principal } from './auth';
 import { Clouds, GOOGLE_CALLBACK } from './cloud';
 import { BadRequest, body, CORS, fail, isStr, json, randomToken, type Store } from './common';
 import { buildStats, type StatLog, type StatVault } from './stats';
@@ -71,6 +72,8 @@ interface VaultRecord {
   createdAt: string;
   lastOpenAt: string | null;
   cloud?: CloudInfo;
+  /** who made it: an e-mail (Google sign-in), or null/absent (the owner, by password) */
+  createdBy?: string | null;
 }
 
 export interface LogEntry {
@@ -148,6 +151,7 @@ function publicVault(v: VaultRecord) {
 
 export class Hub {
   private clouds: Clouds;
+  private auth: Auth;
   /** first-part uploads in flight, so two parts arriving together do not each create a folder */
   private preparing = new Map<string, Promise<string>>();
 
@@ -162,6 +166,7 @@ export class Hub {
     opts: { partBytes?: number } = {},
   ) {
     this.clouds = new Clouds(store, fetcher, now);
+    this.auth = new Auth(store, now, fetcher, () => this.sessionMs);
     this.partBytes = opts.partBytes ?? PART_BYTES;
   }
 
@@ -217,34 +222,55 @@ export class Hub {
       if (cv && req.method === 'GET') return this.cloudHeader(cv[1]);
       const cb = path.match(/^\/api\/blob\/([a-z0-9]{1,64})\/(\d{1,6})$/);
       if (cb && req.method === 'GET') return this.readPart(req, cb[1], Number(cb[2]));
-      if (path === GOOGLE_CALLBACK && req.method === 'GET') return this.clouds.googleCallback(url);
+      const token = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
+      // the Google callback serves both the Drive connection and signing in; the state says which
+      if (path === GOOGLE_CALLBACK && req.method === 'GET') {
+        return (await this.auth.isLoginState(url.searchParams.get('state'))) ? this.auth.googleCallback(url) : this.clouds.googleCallback(url);
+      }
+      if (path === '/api/auth/google/start' && req.method === 'POST') return this.auth.googleStart(await body(req), url.origin, await this.auth.principal(token));
+      if (path === '/api/auth/ticket' && req.method === 'POST') return this.auth.ticket(await body(req));
+      if (path === '/api/auth/totp' && req.method === 'POST') return this.auth.totp(await body(req));
       if (path === '/api/admin/setup' && req.method === 'POST') return this.setup(await body(req));
       if (path === '/api/admin/login' && req.method === 'POST') return this.login(await body(req));
       if (path.startsWith('/api/admin/')) {
-        const token = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
-        if (!(await this.checkAdmin(token))) return fail(401, 'unauthorized', '登入已過期，請重新登入管理員');
+        const me = await this.auth.principal(token);
+        if (!me) return fail(401, 'unauthorized', '登入已過期，請重新登入');
         if (path === '/api/admin/logout' && req.method === 'POST') {
           await this.store.delete(`admin:sess:${token}`);
           return json({ ok: true });
         }
+        if (path === '/api/admin/me' && req.method === 'GET') return json({ ok: true, me, mode: (await this.auth.config()).mode });
+        if (path === '/api/admin/me/recovery' && req.method === 'POST') return this.auth.newRecovery(me);
+        if (path === '/api/admin/vaults' && req.method === 'POST') return this.register(await body(req), me);
+        if (path === '/api/admin/vaults' && req.method === 'GET') return this.listVaults(me);
+        if (path === '/api/admin/stats' && req.method === 'GET') return this.stats(url.searchParams, me);
+        if (path === '/api/admin/storage' && req.method === 'GET') return this.clouds.adminList(await this.storageUsage(), url.origin, me.role);
+        const up = path.match(/^\/api\/admin\/blob\/([a-z0-9]{1,64})\/(\d{1,6})$/);
+        if (up && req.method === 'PUT') return this.uploadPart(req, up[1], Number(up[2]), me);
+        const m = path.match(/^\/api\/admin\/vaults\/([a-z0-9]{1,64})(\/logs|\/complete)?$/);
+        if (m && m[2] === '/complete' && req.method === 'POST') return this.completeUpload(m[1], me);
+        if (m && m[2] === '/logs' && req.method === 'GET') return this.logs(m[1], me);
+        if (m && !m[2] && req.method === 'PATCH') return this.update(m[1], await body(req), me);
+        if (m && !m[2] && req.method === 'DELETE') return this.remove(m[1], me);
+
+        // ----- the owner only from here: people, sign-in, password, cloud storages -----
+        if (me.role !== 'owner') return fail(403, 'forbidden', '只有擁有者可以做這件事');
         if (path === '/api/admin/password' && req.method === 'POST') return this.changePassword(await body(req));
-        if (path === '/api/admin/vaults' && req.method === 'POST') return this.register(await body(req));
-        if (path === '/api/admin/vaults' && req.method === 'GET') return this.listVaults();
-        if (path === '/api/admin/stats' && req.method === 'GET') return this.stats(url.searchParams);
-        if (path === '/api/admin/storage' && req.method === 'GET') return this.clouds.adminList(await this.storageUsage(), url.origin);
+        if (path === '/api/admin/auth' && req.method === 'GET') return this.auth.adminView(me);
+        if (path === '/api/admin/auth' && req.method === 'PATCH') return this.auth.patchConfig(await body(req));
+        if (path === '/api/admin/auth/google' && req.method === 'POST') return this.setLoginClient(await body(req));
+        if (path === '/api/admin/auth/password' && req.method === 'POST') return this.auth.usePassword();
+        if (path === '/api/admin/users' && req.method === 'POST') return this.auth.addUser(await body(req), me);
+        const us = path.match(/^\/api\/admin\/users\/([^/]{3,300})$/);
+        if (us && req.method === 'PATCH') return this.auth.patchUser(decodeURIComponent(us[1]), await body(req), me);
+        if (us && req.method === 'DELETE') return this.auth.removeUser(decodeURIComponent(us[1]), me);
         if (path === '/api/admin/storage' && req.method === 'POST') return this.clouds.adminSave(await body(req));
         if (path === '/api/admin/storage/google/start' && req.method === 'POST') return this.clouds.googleStart(await body(req), url.origin);
-        const st = path.match(/^\/api\/admin\/storage\/([a-z0-9]{1,40})(?:\/(test|default))?$/);
+        const st = path.match(/^\/api\/admin\/storage\/([a-z0-9]{1,40})(?:\/(test|default|members))?$/);
         if (st && st[2] === 'test' && req.method === 'POST') return this.clouds.adminTest(st[1]);
         if (st && st[2] === 'default' && req.method === 'POST') return this.clouds.adminSetDefault(st[1]);
+        if (st && st[2] === 'members' && req.method === 'POST') return this.clouds.adminSetMembers(st[1], (await body(req)).enabled === true);
         if (st && !st[2] && req.method === 'DELETE') return this.clouds.adminRemove(st[1], (await this.storageUsage()).get(st[1]) ?? 0);
-        const up = path.match(/^\/api\/admin\/blob\/([a-z0-9]{1,64})\/(\d{1,6})$/);
-        if (up && req.method === 'PUT') return this.uploadPart(req, up[1], Number(up[2]));
-        const m = path.match(/^\/api\/admin\/vaults\/([a-z0-9]{1,64})(\/logs|\/complete)?$/);
-        if (m && m[2] === '/complete' && req.method === 'POST') return this.completeUpload(m[1]);
-        if (m && m[2] === '/logs' && req.method === 'GET') return this.logs(m[1]);
-        if (m && !m[2] && req.method === 'PATCH') return this.update(m[1], await body(req));
-        if (m && !m[2] && req.method === 'DELETE') return this.remove(m[1]);
       }
       return fail(404, 'not_found', '找不到這個功能');
     }
@@ -257,6 +283,8 @@ export class Hub {
       version: SERVER_VERSION,
       adminConfigured: await this.adminConfigured(),
       serverTime: new Date(this.now()).toISOString(),
+      // how the packer signs in: "password", or "google" (Google account + authenticator app)
+      auth: { mode: (await this.auth.config()).mode },
       // this server can keep vaults in a cloud storage and hand them out as links
       cloud: { partBytes: this.partBytes },
     });
@@ -392,10 +420,10 @@ export class Hub {
   }
 
   private async setup(b: Record<string, unknown>) {
-    if (await this.adminConfigured()) return fail(409, 'already_configured', '管理員密碼已經設定過了');
+    if ((await this.adminConfigured()) || (await this.auth.config()).mode === 'google') return fail(409, 'already_configured', '管理員密碼已經設定過了');
     if (!isStr(b.password, 200) || b.password.length < 8) throw new BadRequest('管理員密碼至少 8 個字元');
     await this.savePassword(b.password);
-    return this.issueAdminToken();
+    return this.issueAdminToken(false);
   }
 
   private async savePassword(password: string) {
@@ -422,7 +450,12 @@ export class Hub {
     if (lock.until > now) {
       return fail(429, 'admin_locked', `登入失敗太多次，請 ${Math.ceil((lock.until - now) / 60000)} 分鐘後再試`);
     }
-    if (!(await this.verifyPassword(b.password))) {
+    // With Google sign-in on, only the deploy-time password works here: the spare key for the owner.
+    const google = (await this.auth.config()).mode === 'google';
+    const good = google
+      ? !!this.env.ADMIN_PASSWORD && sameBytes(await sha256(b.password), await sha256(this.env.ADMIN_PASSWORD))
+      : await this.verifyPassword(b.password);
+    if (!good) {
       lock.failures += 1;
       if (lock.failures >= this.maxAdminFailures) {
         lock.failures = 0;
@@ -432,37 +465,40 @@ export class Hub {
       return fail(401, 'bad_password', '管理員密碼不正確');
     }
     await this.store.delete('admin:lock');
-    return this.issueAdminToken();
+    return json({ ok: true, ...(await this.auth.issueSession({ email: null, breakGlass: google }, b.remember === true, 'owner')) });
   }
 
-  private async issueAdminToken() {
-    const token = randomToken();
-    const expires = this.now() + this.sessionMs;
-    await this.store.put(`admin:sess:${token}`, expires);
-    return json({ ok: true, token, expiresAt: new Date(expires).toISOString() });
+  private async issueAdminToken(remember: boolean) {
+    return json({ ok: true, ...(await this.auth.issueSession({ email: null }, remember, 'owner')) });
   }
 
-  private async checkAdmin(token: string) {
-    if (!token || token.length > 100) return false;
-    const exp = await this.store.get<number>(`admin:sess:${token}`);
-    if (!exp) return false;
-    if (exp < this.now()) {
-      await this.store.delete(`admin:sess:${token}`);
-      return false;
+  /** The OAuth client for Google sign-in: typed in, or the one a connected Google Drive already uses. */
+  private async setLoginClient(b: Record<string, unknown>) {
+    let fromDrive: { clientId: string; clientSecret: string } | null = null;
+    if (isStr(b.fromStorage, 40)) {
+      const p = await this.clouds.get(b.fromStorage);
+      if (!p || p.type !== 'gdrive') return fail(404, 'unknown', '找不到這個 Google Drive 雲端空間');
+      fromDrive = { clientId: p.config.clientId, clientSecret: p.config.clientSecret };
     }
-    return true;
+    return this.auth.setGoogleClient(b, fromDrive);
   }
 
   private async changePassword(b: Record<string, unknown>) {
+    if ((await this.auth.config()).mode === 'google') return fail(409, 'google_mode', '目前用 Google 登入，沒有管理員密碼可以更換');
     if (!isStr(b.current, 200) || !isStr(b.next, 200)) throw new BadRequest('current/next');
     if (b.next.length < 8) throw new BadRequest('新密碼至少 8 個字元');
     if (!(await this.verifyPassword(b.current))) return fail(401, 'bad_password', '目前的管理員密碼不正確');
     await this.savePassword(b.next);
-    for (const k of (await this.store.list({ prefix: 'admin:sess:' })).keys()) await this.store.delete(k);
-    return this.issueAdminToken();
+    await this.auth.endSessions(() => true);
+    return this.issueAdminToken(false);
   }
 
-  private async register(b: Record<string, unknown>) {
+  /** Owners see every vault; members only the ones they made (others look like they do not exist). */
+  private mine(v: VaultRecord | undefined, me: Principal): v is VaultRecord {
+    return !!v && (me.role === 'owner' || (!!me.email && v.createdBy === me.email));
+  }
+
+  private async register(b: Record<string, unknown>, me: Principal) {
     if (!Array.isArray(b.vaults) || b.vaults.length === 0 || b.vaults.length > 500) throw new BadRequest('vaults');
     const now = new Date(this.now()).toISOString();
     const records: VaultRecord[] = [];
@@ -479,6 +515,7 @@ export class Hub {
         if (!isStr(c.storage, 40)) throw new BadRequest('cloud.storage');
         const profile = await this.clouds.get(c.storage);
         if (!profile || profile.status !== 'ready') return fail(409, 'no_storage', '找不到這個雲端空間，或它還沒有完成連結，請到「雲端空間」確認');
+        if (me.role !== 'owner' && !profile.members) return fail(403, 'no_storage', '擁有者沒有開放這個雲端空間給成員使用');
         const size = c.size;
         if (typeof size !== 'number' || !Number.isInteger(size) || size < 1 || size > MAX_CLOUD_BYTES) throw new BadRequest('cloud.size');
         const h = raw.header as Record<string, unknown> | undefined;
@@ -502,6 +539,7 @@ export class Hub {
         revoked: false,
         createdAt: now,
         lastOpenAt: null,
+        createdBy: me.email,
         ...(cloud ? { cloud } : {}),
       });
     }
@@ -513,32 +551,36 @@ export class Hub {
     return json({ ok: true, count: records.length, cloud });
   }
 
-  private async listVaults() {
+  private async listVaults(me: Principal) {
     const all = await this.store.list<VaultRecord>({ prefix: 'vault:' });
-    const vaults = [...all.values()].map(publicVault).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const vaults = [...all.values()].filter((v) => this.mine(v, me)).map(publicVault).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return json({ ok: true, vaults, serverTime: new Date(this.now()).toISOString() });
   }
 
-  private async stats(q: URLSearchParams) {
+  private async stats(q: URLSearchParams, me: Principal) {
     const num = (k: string, d: number) => (q.get(k) !== null && Number.isFinite(Number(q.get(k))) ? Number(q.get(k)) : d);
-    const vaults = [...(await this.store.list<VaultRecord>({ prefix: 'vault:' })).values()] as StatVault[];
+    const own = [...(await this.store.list<VaultRecord>({ prefix: 'vault:' })).values()].filter((v) => this.mine(v, me));
+    const ids = new Set(own.map((v) => v.id));
+    const vaults = own as StatVault[];
     const logs: StatLog[] = [];
     for (const [k, l] of await this.store.list<LogEntry>({ prefix: 'log:' })) {
-      logs.push({ ...l, vaultId: k.split(':')[1] });
+      const vaultId = k.split(':')[1];
+      if (ids.has(vaultId)) logs.push({ ...l, vaultId });
     }
     const stats = buildStats(vaults, logs, { days: num('days', 30), tzOffset: num('tzOffset', 0), now: this.now() });
     return json({ ok: true, stats, serverTime: new Date(this.now()).toISOString() });
   }
 
-  private async logs(id: string) {
+  private async logs(id: string, me: Principal) {
+    if (!this.mine(await this.store.get<VaultRecord>(`vault:${id}`), me)) return fail(404, 'unknown', '找不到這份封存檔');
     const all = await this.store.list<LogEntry>({ prefix: `log:${id}:`, reverse: true, limit: 500 });
     return json({ ok: true, logs: [...all.values()] });
   }
 
-  private async update(id: string, b: Record<string, unknown>) {
+  private async update(id: string, b: Record<string, unknown>, me: Principal) {
     const key = `vault:${id}`;
     const v = await this.store.get<VaultRecord>(key);
-    if (!v) return fail(404, 'unknown', '找不到這份封存檔');
+    if (!this.mine(v, me)) return fail(404, 'unknown', '找不到這份封存檔');
     if (typeof b.revoked === 'boolean') v.revoked = b.revoked;
     if (b.unlock === true) {
       v.locked = false;
@@ -557,10 +599,10 @@ export class Hub {
     return json({ ok: true, vault: publicVault(v) });
   }
 
-  private async remove(id: string) {
+  private async remove(id: string, me: Principal) {
     const key = `vault:${id}`;
     const v = await this.store.get<VaultRecord>(key);
-    if (!v) return fail(404, 'unknown', '找不到這份封存檔');
+    if (!this.mine(v, me)) return fail(404, 'unknown', '找不到這份封存檔');
     if (v.cloud) {
       // Delete the parts in the cloud first. Object storage deletes one file per request, so a big
       // vault may take a few calls: the record stays (revoked) until nothing is left.
@@ -654,10 +696,10 @@ export class Hub {
     return pending;
   }
 
-  private async uploadPart(req: Request, id: string, part: number) {
+  private async uploadPart(req: Request, id: string, part: number, me: Principal) {
     const key = `vault:${id}`;
     const v = await this.store.get<VaultRecord>(key);
-    if (!v?.cloud) return fail(404, 'unknown', '找不到這份雲端封存檔');
+    if (!this.mine(v, me) || !v.cloud) return fail(404, 'unknown', '找不到這份雲端封存檔');
     if (v.cloud.complete) return fail(409, 'complete', '這份封存檔已經上傳完成');
     const { parts, partBytes, size } = v.cloud;
     if (part >= parts) throw new BadRequest('part');
@@ -676,10 +718,10 @@ export class Hub {
     return json({ ok: true, part, uploaded: cur.cloud.refs.filter(Boolean).length, parts });
   }
 
-  private async completeUpload(id: string) {
+  private async completeUpload(id: string, me: Principal) {
     const key = `vault:${id}`;
     const v = await this.store.get<VaultRecord>(key);
-    if (!v?.cloud) return fail(404, 'unknown', '找不到這份雲端封存檔');
+    if (!this.mine(v, me) || !v.cloud) return fail(404, 'unknown', '找不到這份雲端封存檔');
     const missing = v.cloud.refs.filter((r) => !r).length;
     if (missing) return fail(409, 'incomplete', `還有 ${missing} 段沒有上傳`);
     v.cloud.complete = true;

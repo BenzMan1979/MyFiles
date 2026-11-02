@@ -156,6 +156,21 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run deploy:ci   # 讀 VAU
   - 浮水印被移除或隱藏時會自動上鎖
 - 手機用 `/open.html` 開啟同一個檔案，解密只在手機上進行；金鑰可以按「📷 掃描 QR」用相機掃金鑰卡（在瀏覽器內解碼，不上傳）
 
+## 多人使用：Google 帳號＋驗證器登入
+
+預設用一組管理員密碼登入。要讓多人各自登入、分開管理，在打包器的「👥 使用者與登入」改用 **Google 帳號＋驗證器 App**（TOTP，Google Authenticator、Microsoft Authenticator、1Password 等都可以）：
+
+1. 設定登入用的 OAuth 用戶端：已經連結 Google Drive 的話按「沿用 Google Drive 的用戶端」，重新導向 URI 也是同一個，Google Cloud 那邊不用改。
+2. 按「用 Google 登入並啟用」：用你的 Google 帳號登入、掃 QR Code 綁定驗證器、保存 10 組備用碼。完成後你是**擁有者**，管理員密碼登入隨即停用。
+3. 選「誰可以登入」：**只限名單**（建議）、**指定網域**（例如公司的 `example.com` 全部可以，第一次登入自動成為成員），或所有 Google 帳號（不建議）。
+4. 新增使用者，身分選**擁有者**（管理所有東西）或**成員**（只看得到自己建立的封存檔、只能用擁有者開放給成員的雲端空間）。
+
+- 登入一次，打包器和伺服器就都登入了；可以勾「記住這台裝置 30 天」。打包器的預設伺服器用 Google 登入時，一打開就是登入畫面。
+- 名單外的人會被要求輸入驗證碼，得到的訊息和輸入錯誤的驗證碼一樣，不會透露是哪一項不對。驗證碼錯 5 次鎖 15 分鐘，之後加倍（最多 24 小時）；同一組驗證碼不能用兩次。
+- 打包器放在伺服器以外的網址（例如 GitHub Pages）時，那個網址要列在「允許從這些網址的打包器登入」；從哪個網址啟用，就會自動加入那個網址。
+- **緊急備用鑰匙**：部署時設在 Cloudflare 的 `ADMIN_PASSWORD` 仍可用擁有者身分登入（登入畫面的「手機和備用碼都不見了？」），所以請把它當成重要密碼保管。
+- 收件人不受影響，開啟封存檔照樣不需要登入。
+
 ## 連結 Google Drive（約 10 分鐘，只要做一次，免費）
 
 用你要存放檔案的 Google 帳號登入 Google Cloud（下面以中文介面為準）。`https://你的伺服器` 換成你的伺服器網址，例如 `https://edv.example.com`。
@@ -198,7 +213,8 @@ src/core/       加密、封存格式、金鑰文字、MIME（打包器與檢視
 src/viewer/     檢視器：解鎖、樹狀列表、預覽、防護 → 建置成單一 HTML 模板
 src/app/        打包器：伺服器精靈、建立精靈、管理頁、說明
 src/shared/     共用樣式、DOM 工具、設定值（settings.ts）
-server/src/     Worker 與 Durable Object（hub.ts 為不依賴 Cloudflare 的核心邏輯；cloud.ts 管理雲端空間設定與 Google 授權）
+server/src/     Worker 與 Durable Object（hub.ts 為不依賴 Cloudflare 的核心邏輯；cloud.ts 管理雲端空間設定與 Google 授權；
+                auth.ts 是 Google 登入、使用者與角色；totp.ts 是驗證器的一次性驗證碼）
 server/src/storage/  雲端空間 adapter：webdav.ts、s3.ts（含 AWS SigV4 簽章）、gdrive.ts；index.ts 登記可用的種類
 scripts/        建置與部署腳本（settings.mjs 讀參數，deploy-ci.mjs 是部署器）
 tests/          單元測試；tests/e2e/ 為瀏覽器端對端測試

@@ -6,6 +6,17 @@ export interface ServerProfile {
   id: string;
   name: string;
   url: string;
+  /** how this server signs in, as last seen (so the login screen can show at once) */
+  auth?: 'password' | 'google';
+}
+
+/** Who is signed in to a server. */
+export interface SignedIn {
+  /** null = by password (the owner) */
+  email: string | null;
+  role: 'owner' | 'member';
+  /** signed in with the deploy-time spare password while Google sign-in is on */
+  breakGlass?: boolean;
 }
 
 export class ApiError extends Error {
@@ -46,6 +57,10 @@ export const servers = {
     servers.save(list);
     if (!servers.defaultId()) servers.setDefault(p.id);
   },
+  /** replaces an entry in place (keeps the order of the list) */
+  update(p: ServerProfile) {
+    servers.save(servers.list().map((s) => (s.id === p.id ? p : s)));
+  },
   remove(id: string) {
     // Whoever deletes the entry for this very site does not want it added back by itself.
     if (servers.get(id)?.url === location.origin) lsSet(LS_NO_AUTO, true);
@@ -63,32 +78,59 @@ export const servers = {
   default: () => servers.get(servers.defaultId()) ?? servers.list()[0],
 };
 
+interface StoredToken {
+  token: string;
+  expiresAt: string;
+  user?: SignedIn;
+}
+
+/**
+ * Admin logins. Normally kept for this tab only (sessionStorage); "remember this device" keeps it in
+ * localStorage until it expires (30 days at most).
+ */
 export const tokens = {
-  get(id: string): string | null {
-    try {
-      const raw = sessionStorage.getItem(SS_TOKEN + id);
-      if (!raw) return null;
-      const t = JSON.parse(raw) as { token: string; expiresAt: string };
-      return Date.parse(t.expiresAt) > Date.now() ? t.token : null;
-    } catch {
-      return null;
+  read(id: string): StoredToken | null {
+    for (const store of [() => sessionStorage, () => localStorage]) {
+      try {
+        const raw = store().getItem(SS_TOKEN + id);
+        if (!raw) continue;
+        const t = JSON.parse(raw) as StoredToken;
+        if (Date.parse(t.expiresAt) > Date.now()) return t;
+        store().removeItem(SS_TOKEN + id);
+      } catch {
+        /* storage unavailable */
+      }
     }
+    return null;
   },
-  set(id: string, token: string, expiresAt: string) {
+  get(id: string): string | null {
+    return tokens.read(id)?.token ?? null;
+  },
+  /** who is signed in; logins from before roles existed are the owner */
+  user(id: string): SignedIn | null {
+    const t = tokens.read(id);
+    return t ? (t.user ?? { email: null, role: 'owner' }) : null;
+  },
+  set(id: string, token: string, expiresAt: string, user?: SignedIn, remember = false) {
+    tokens.clear(id);
     try {
-      sessionStorage.setItem(SS_TOKEN + id, JSON.stringify({ token, expiresAt }));
+      (remember ? localStorage : sessionStorage).setItem(SS_TOKEN + id, JSON.stringify({ token, expiresAt, user }));
     } catch {
       /* storage unavailable */
     }
   },
   clear(id: string) {
-    try {
-      sessionStorage.removeItem(SS_TOKEN + id);
-    } catch {
-      /* storage unavailable */
+    for (const store of [() => sessionStorage, () => localStorage]) {
+      try {
+        store().removeItem(SS_TOKEN + id);
+      } catch {
+        /* storage unavailable */
+      }
     }
   },
 };
+
+export const isOwner = (id: string) => tokens.user(id)?.role === 'owner';
 
 /** Where to send a recipient whose device cannot open the HTML file: this site, else the default server. */
 export function phoneViewerUrl(serverUrl?: string | null): string | null {
@@ -153,6 +195,8 @@ export interface ServerInfo {
   serverTime: string;
   /** present on servers that can keep vaults in a cloud storage (cloud links) */
   cloud?: { partBytes: number };
+  /** how the packer signs in (servers from before this have only the password) */
+  auth?: { mode: 'password' | 'google' };
 }
 
 export async function serverInfo(url: string): Promise<ServerInfo> {
@@ -161,9 +205,17 @@ export async function serverInfo(url: string): Promise<ServerInfo> {
   return info;
 }
 
-export async function login(p: ServerProfile, password: string, setup = false) {
-  const r = await api<{ token: string; expiresAt: string }>(p.url, setup ? '/api/admin/setup' : '/api/admin/login', { body: { password } });
-  tokens.set(p.id, r.token, r.expiresAt);
+export async function login(p: ServerProfile, password: string, setup = false, remember = false) {
+  const r = await api<{ token: string; expiresAt: string; user?: SignedIn }>(p.url, setup ? '/api/admin/setup' : '/api/admin/login', { body: { password, remember } });
+  tokens.set(p.id, r.token, r.expiresAt, r.user, remember);
+}
+
+/** Asks the server how it signs in, and remembers it on the profile. */
+export async function authMode(p: ServerProfile): Promise<'password' | 'google'> {
+  const mode = (await serverInfo(p.url)).auth?.mode ?? 'password';
+  if (p.auth !== mode && servers.get(p.id)) servers.update({ ...servers.get(p.id)!, auth: mode });
+  p.auth = mode;
+  return mode;
 }
 
 export interface RemoteVault {
@@ -180,6 +232,8 @@ export interface RemoteVault {
   lastOpenAt: string | null;
   /** set for cloud link vaults */
   cloud?: { storage: string; size: number; complete: boolean };
+  /** who made it (Google sign-in); null for the owner signed in by password */
+  createdBy?: string | null;
 }
 
 export interface RemoteLog {
@@ -213,6 +267,8 @@ export interface CloudProfile {
   isDefault: boolean;
   /** vaults kept there */
   vaults: number;
+  /** members (not only the owner) may keep vaults here */
+  members: boolean;
 }
 
 export const listClouds = (server: ServerProfile) =>
@@ -246,4 +302,28 @@ export async function uploadPart(server: ServerProfile, vaultId: string, part: n
     if (res.status < 500) break;
   }
   throw lastError!;
+}
+
+// ---------- people and sign-in (owner) ----------
+
+export interface UserInfo {
+  email: string;
+  role: 'owner' | 'member';
+  disabled: boolean;
+  totp: boolean;
+  recoveryLeft: number;
+  locked: boolean;
+  createdAt: string;
+  lastLoginAt: string | null;
+  addedBy: string | null;
+}
+
+export interface AuthView {
+  mode: 'password' | 'google';
+  access: 'list' | 'domain' | 'any';
+  domains: string[];
+  returnOrigins: string[];
+  google: { clientId: string; hasSecret: boolean } | null;
+  users: UserInfo[];
+  me: SignedIn;
 }

@@ -18,6 +18,8 @@ export interface StorageProfile {
   state: { accessToken?: string; accessExpires?: number; account?: string; connectedAt?: string };
   /** pending = waiting for the Google sign-in to finish */
   status: 'ready' | 'pending';
+  /** members (not only the owner) may keep vaults here */
+  members?: boolean;
 }
 
 export interface AdapterDeps {

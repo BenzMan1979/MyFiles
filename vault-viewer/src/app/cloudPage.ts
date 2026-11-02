@@ -2,7 +2,7 @@
 // links (the encrypted blob lives in that storage; the server streams it to recipients who unlock).
 
 import { clear, h } from '../shared/dom';
-import { api, ApiError, listClouds, servers, tokens, type CloudProfile, type ServerProfile } from './api';
+import { api, ApiError, isOwner, listClouds, servers, tokens, type CloudProfile, type ServerProfile } from './api';
 import { loginDialog } from './serverPage';
 import { confirmDialog, copyButton, modal, section, toast } from './ui';
 
@@ -43,7 +43,30 @@ export function renderCloud(root: HTMLElement, rerender: () => void) {
   }
   const body = h('div', null, h('div', { class: 'empty' }, h('div', { class: 'spinner' }), h('p', { class: 'muted' }, '讀取中…')));
   root.append(body, howItWorks());
+  if (!isOwner(server.id)) {
+    void memberView(server, body);
+    return;
+  }
   void load(server, body, rerender);
+}
+
+/** Members cannot change anything here; they see which storages they may use for cloud links. */
+async function memberView(server: ServerProfile, body: HTMLElement) {
+  let profiles: CloudProfile[] = [];
+  try {
+    profiles = (await listClouds(server)).profiles;
+  } catch (e) {
+    clear(body);
+    body.append(h('p', { class: 'error' }, (e as Error).message));
+    return;
+  }
+  clear(body);
+  body.append(section('可以使用的雲端空間',
+    h('p', { class: 'muted' }, '雲端空間由擁有者連結和管理。建立封存檔時選「雲端連結」，就會放在下面其中一個。'),
+    profiles.length
+      ? h('ul', null, ...profiles.map((p) => h('li', null, TYPE_ICON[p.type] ?? '☁️', ' ', h('strong', null, p.name), `（${p.typeLabel}）`, p.isDefault ? h('span', { class: 'chip ok', style: 'margin-left:6px' }, '預設') : null)))
+      : h('p', { class: 'note warn' }, '擁有者還沒有開放任何雲端空間給成員使用，目前只能做成封存檔交付。'),
+  ));
 }
 
 async function load(server: ServerProfile, body: HTMLElement, rerender: () => void) {
@@ -105,6 +128,17 @@ function profileCard(server: ServerProfile, p: CloudProfile, redirectUri: string
       p.status === 'ready' ? testBtn : null,
       p.status === 'ready' && !p.isDefault
         ? h('button', { class: 'btn small', onclick: async () => { await api(server, `/api/admin/storage/${p.id}/default`, { body: {}, auth: true }); toast('已設為預設'); rerender(); } }, '設為預設')
+        : null,
+      p.status === 'ready' && server.auth === 'google'
+        ? h('button', {
+            class: `btn small ${p.members ? 'primary' : ''}`,
+            title: '成員建立雲端連結時能不能放在這裡',
+            onclick: async () => {
+              await api(server, `/api/admin/storage/${p.id}/members`, { body: { enabled: !p.members }, auth: true });
+              toast(p.members ? '已不開放給成員' : '已開放給成員使用');
+              rerender();
+            },
+          }, p.members ? '✓ 成員可用' : '開放給成員')
         : null,
       h('button', { class: 'btn small', onclick: edit }, p.type === 'gdrive' ? (p.status === 'ready' ? '設定／重新連結' : '繼續連結') : '編輯'),
       h('button', {
