@@ -100,6 +100,11 @@ function render() {
   }
   main.append(page);
   route.render(page, render);
+  // in a group the tab already names the page: keep the heading for screen readers, not on screen twice
+  if (group.routes.length > 1) {
+    const h1 = page.querySelector('.page-head h1');
+    if (h1?.textContent?.includes(route.label)) h1.classList.add('sr-only');
+  }
   if (asked === 'help') requestAnimationFrame(() => document.getElementById('help-section')?.scrollIntoView({ block: 'start' }));
   document.title = `${route.label} · ${APP_NAME} 打包器`;
 }
