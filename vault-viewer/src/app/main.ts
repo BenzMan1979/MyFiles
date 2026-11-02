@@ -33,23 +33,15 @@ const shell = h('div', { class: 'app-shell' },
 );
 app.append(shell);
 
-const SKIP_GATE = 'vault-packer:skip-gate';
-const gateSkipped = () => {
-  try {
-    return sessionStorage.getItem(SKIP_GATE) === '1';
-  } catch {
-    return false;
-  }
-};
-
 /**
- * When the default server signs in with Google, the packer opens on its login screen; signing in
- * there is all it takes (the server is logged in too). The pages hold no secrets, so this is about
- * getting people to sign in, not protection: that is the server's job.
+ * When the default server signs in with Google, the packer opens on its login screen and there is no
+ * way past it without signing in: the owner chose who may use it. Signing in there is all it takes
+ * (the server is logged in too). What actually protects the vaults, people and cloud storages is
+ * the server, which refuses every admin request without a valid sign-in.
  */
 function gate(): boolean {
   const d = servers.default();
-  if (!d || d.auth !== 'google' || tokens.get(d.id) || gateSkipped() || location.hash === '#servers') return false;
+  if (!d || d.auth !== 'google' || tokens.get(d.id)) return false;
   clear(nav);
   clear(main);
   shell.classList.add('gated');
@@ -60,15 +52,6 @@ function gate(): boolean {
   const err = h('p', { class: 'error' });
   const go = h('button', { class: 'btn primary wide' }, 'G 用 Google 登入');
   go.addEventListener('click', () => g.go().catch((e: Error) => (err.textContent = e.message)));
-  const skip = (hash: string) => () => {
-    try {
-      sessionStorage.setItem(SKIP_GATE, '1');
-    } catch {
-      /* storage unavailable */
-    }
-    location.hash = hash;
-    render();
-  };
   main.append(
     h('div', { class: 'center-screen' },
       h('div', { class: 'card gate' },
@@ -77,9 +60,6 @@ function gate(): boolean {
         ...g.body.slice(0, 1),
         go, err,
         ...g.body.slice(1),
-        h('p', { class: 'foot muted small' },
-          h('button', { class: 'link', onclick: skip('#servers') }, '改用其他伺服器'), '　·　',
-          h('button', { class: 'link', onclick: skip('#create') }, '不登入，只做離線封存檔')),
       ),
     ),
   );

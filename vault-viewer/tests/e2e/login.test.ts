@@ -87,6 +87,12 @@ describe('sign in with Google + authenticator', () => {
     const p = await asGoogleUser('amy@gmail.com');
     await p.waitForSelector('.card.gate');
     await expect(p.locator('.app-side').isVisible()).resolves.toBe(false);
+    // no way around it: no links past it, and going to another page still shows it
+    await expect(p.locator('.card.gate').textContent()).resolves.not.toMatch(/改用其他伺服器|不登入/);
+    for (const page of ['#servers', '#create', '#manage']) {
+      await p.evaluate((h) => (location.hash = h), page);
+      await p.waitForSelector('.card.gate');
+    }
     await shot(p, '03-gate');
     await p.click('.card.gate button:has-text("用 Google 登入")');
     await enroll(p);
