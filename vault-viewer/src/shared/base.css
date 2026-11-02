@@ -51,7 +51,7 @@ h3 { font-size: 15px; margin: 0 0 6px; }
 a { color: var(--accent); }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
-.error { color: var(--danger); min-height: 1em; margin: 6px 0; }
+.error { color: var(--danger); background: var(--danger-soft); border-radius: 8px; padding: 8px 12px; min-height: 1em; margin: 10px 0; }
 .error:empty { display: none; }
 .spacer { flex: 1; }
 .btn {
