@@ -5,7 +5,7 @@ import { clear, formatDateTime, h } from '../shared/dom';
 import { api, listClouds, servers, tokens, type AuthView, type ServerProfile, type UserInfo } from './api';
 import { recoveryDialog, startGoogleLogin } from './googleLogin';
 import { loginDialog } from './serverPage';
-import { confirmDialog, copyButton, field, modal, section, stackable, toast } from './ui';
+import { confirmDialog, copyButton, columns, field, modal, section, stackable, toast } from './ui';
 
 let selectedServer = '';
 
@@ -77,8 +77,10 @@ async function load(server: ServerProfile, body: HTMLElement, rerender: () => vo
   if (v.me.breakGlass) {
     body.append(h('p', { class: 'note warn' }, '你現在是用部署時的備用密碼登入。處理完之後，建議到 Cloudflare 把 ADMIN_PASSWORD 換成新的一組。'));
   }
-  body.append(v.mode === 'google' ? googleMode(server, v, rerender) : passwordMode(server, v, rerender));
-  if (v.mode === 'google' || v.users.length) body.append(people(server, v, rerender));
+  body.append(columns(
+    [v.mode === 'google' ? googleMode(server, v, rerender) : passwordMode(server, v, rerender)],
+    [v.mode === 'google' || v.users.length ? people(server, v, rerender) : null],
+  ));
 }
 
 // ---------- sign-in mode ----------

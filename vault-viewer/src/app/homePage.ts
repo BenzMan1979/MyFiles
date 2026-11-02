@@ -2,7 +2,7 @@ import { APP_NAME } from '../shared/config';
 import { h } from '../shared/dom';
 import { phoneViewerUrl, servers, tokens } from './api';
 import { helpSection } from './helpPage';
-import { section } from './ui';
+import { columns, section } from './ui';
 
 export function renderHome(root: HTMLElement) {
   const s = servers.default();
@@ -29,6 +29,7 @@ export function renderHome(root: HTMLElement) {
       card('2', '📦', '建立封存檔', '選檔案、設定條件與收件人，產生每個人專屬的封存檔和金鑰。', '#create', '建立'),
       card('3', '📋', '管理封存檔', '查看誰開過、剩幾次，延長期限、解除鎖定或立即收回。', '#manage', '管理'),
     ),
+    columns([
     section('運作方式',
       h('ol', { class: 'steps' },
         h('li', null, '你在這個頁面選好檔案，加密都在你自己的電腦上完成，檔案', h('strong', null, '不會上傳'), '。'),
@@ -42,12 +43,12 @@ export function renderHome(root: HTMLElement) {
           u ? h('a', { href: u, target: '_blank', rel: 'noopener' }, '線上檢視頁') : '線上檢視頁（設定好伺服器後就有）', '選擇封存檔，解密一樣只在手機上進行。');
       })(),
     ),
-    helpSection(),
     location.protocol.startsWith('http')
       ? section('離線使用打包器',
           h('p', { class: 'muted' }, '這個頁面也可以存到電腦上，之後不用連到這個網址也能打包（線上模式仍需要連到你的伺服器）。'),
           h('a', { class: 'btn', href: './index.html', download: '隨身密閱打包器.html' }, '⬇ 下載打包器'),
         )
-      : '',
+      : null,
+    ], [helpSection()]),
   );
 }
