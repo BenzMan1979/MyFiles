@@ -143,6 +143,10 @@ describe('packer', () => {
     await p.waitForSelector('.stats .tile');
     await expect(p.locator('.tile:has-text("近 30 天開啟") .tile-value').textContent()).resolves.toBe('1');
     await expect(p.locator('.tile:has-text("近 30 天異常") .tile-value').textContent()).resolves.toBe('0');
+    // the headline numbers are always there; the charts sit in a block that starts closed
+    await expect(p.locator('.stats-more').getAttribute('open')).resolves.toBeNull();
+    await p.click('.stats-more summary');
+    await p.waitForSelector('.chart-host path');
     await expect(p.locator('.chart-host path').count()).resolves.toBe(1); // one coloured column: today's open
     await p.hover('.chart-host svg rect:last-of-type', { position: { x: 5, y: 5 }, force: true });
     await expect(p.locator('.tooltip').textContent()).resolves.toContain('成功開啟');
@@ -152,6 +156,12 @@ describe('packer', () => {
     await expect(p.locator('.stats table').first().locator('tbody tr').count()).resolves.toBe(7);
     await p.click('.stats button:has-text("以圖表檢視")');
     await p.screenshot({ path: join(OUT, '12a-stats.png'), fullPage: true });
+    // the list can be narrowed by state, and each batch shows when it was made
+    await expect(p.locator('.batch-date').first().textContent()).resolves.toMatch(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}$/);
+    await expect(p.locator('.list-filters .seg-btn:has-text("有效")').textContent()).resolves.toMatch(/有效 [1-9]/);
+    await p.click('.list-filters .seg-btn:has-text("已結束")');
+    await expect(p.locator('.list-count').textContent()).resolves.toBe('');
+    await p.click('.list-filters .seg-btn:has-text("全部")');
     await p.click('tr:has-text("王小明") button:has-text("紀錄")');
     await p.waitForSelector('dialog td:has-text("開啟")');
     await shot(p, '12-manage-logs');

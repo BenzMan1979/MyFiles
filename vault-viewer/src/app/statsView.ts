@@ -22,6 +22,8 @@ export interface Stats {
 
 const RANGES = [7, 30, 90];
 let selectedDays = 30;
+/** whether the charts block is open; kept so it stays open when the page redraws after an action */
+let statsOpen = false;
 
 export const ISSUE_LABEL: Record<string, { icon: string; text: string; cls: 'warn' | 'danger' }> = {
   bad_proof: { icon: '⚠️', text: '密碼或金鑰錯誤', cls: 'warn' },
@@ -102,7 +104,14 @@ export function statsPanel(server: ServerProfile): HTMLElement {
     const s = current!;
     clear(body);
     ro?.disconnect();
-    body.append(tiles(s), chartBlock(s), h('div', { class: 'stats-cols' }, rankBlock('開啟地區', s.countries, s.period.opens), rankBlock('收件人開啟排行', s.recipients, s.period.opens)), issuesBlock(s));
+    const more = h('details', { class: 'stats-more', open: statsOpen },
+      h('summary', null, '圖表、開啟地區與異常事件'),
+      chartBlock(s),
+      h('div', { class: 'stats-cols' }, rankBlock('開啟地區', s.countries, s.period.opens), rankBlock('收件人開啟排行', s.recipients, s.period.opens)),
+      issuesBlock(s),
+    );
+    more.addEventListener('toggle', () => { statsOpen = more.open; });
+    body.append(tiles(s), more);
     // The chart is drawn at the width it actually has, so text never gets stretched.
     const chart = body.querySelector<HTMLElement>('.chart-host');
     if (chart && typeof ResizeObserver !== 'undefined') {
