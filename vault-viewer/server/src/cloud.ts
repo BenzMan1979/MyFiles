@@ -87,13 +87,32 @@ export class Clouds {
 
   // ---------- admin API ----------
 
-  async adminList(usage: Map<string, number>, origin: string) {
+  async adminList(usage: Map<string, number>, origin: string, role: 'owner' | 'member' = 'owner') {
     const def = await this.defaultId();
+    const all = await this.list();
+    if (role !== 'owner') {
+      // members only see which storages they may use, nothing about the accounts behind them
+      const open = all.filter((p) => p.members && p.status === 'ready');
+      const memberDefault = open.some((p) => p.id === def) ? def : open[0]?.id;
+      return json({
+        ok: true,
+        profiles: open.map((p) => ({ ...publicProfile(p, p.id === memberDefault, 0), account: '', config: {}, secretsSet: {} })),
+        googleRedirectUri: '',
+      });
+    }
     return json({
       ok: true,
-      profiles: (await this.list()).map((p) => publicProfile(p, p.id === def, usage.get(p.id) ?? 0)),
+      profiles: all.map((p) => publicProfile(p, p.id === def, usage.get(p.id) ?? 0)),
       googleRedirectUri: origin + GOOGLE_CALLBACK,
     });
+  }
+
+  /** Lets members (not only the owner) keep their vaults in this storage. */
+  async adminSetMembers(id: string, enabled: boolean) {
+    const p = await this.get(id);
+    if (!p) return fail(404, 'unknown', '找不到這個雲端空間');
+    await this.save({ ...p, members: enabled });
+    return json({ ok: true });
   }
 
   /** Adds or edits a WebDAV / S3 profile (tested before it is saved), or renames a Google one. */

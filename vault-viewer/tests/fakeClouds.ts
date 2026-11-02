@@ -131,6 +131,13 @@ export function fakeGoogle() {
       if (f.get('client_id') !== 'cid.apps.googleusercontent.com' || f.get('client_secret') !== 'secret') return json({ error: 'invalid_client' }, 401);
       accessToken = `access-${++seq}`;
       if (f.get('grant_type') === 'authorization_code') {
+        // "Sign in with Google": a code like "login:someone@example.com" stands for that account
+        const login = f.get('code')?.match(/^login:(.+)$/);
+        if (login) {
+          const claims = { iss: 'https://accounts.google.com', aud: f.get('client_id'), email: login[1], email_verified: true, exp: Math.floor(Date.now() / 1000) + 3600 };
+          const part = (o: object) => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+          return json({ access_token: accessToken, id_token: `${part({ alg: 'RS256' })}.${part(claims)}.sig`, expires_in: 3600 });
+        }
         if (f.get('code') !== 'good-code') return json({ error: 'invalid_grant' }, 400);
         return json({ access_token: accessToken, refresh_token: g.refreshToken, expires_in: 3600, scope: g.grantedScope });
       }

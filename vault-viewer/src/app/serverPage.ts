@@ -2,8 +2,10 @@ import { randomId } from '../core/keytext';
 import { APP_NAME, DEPLOY_BUTTON_URL } from '../shared/config';
 import { settings } from '../shared/settings';
 import { clear, h } from '../shared/dom';
-import { api, ApiError, login, normaliseUrl, serverInfo, servers, tokens, type ServerProfile } from './api';
+import { api, ApiError, authMode, isOwner, login, normaliseUrl, serverInfo, servers, tokens, type ServerProfile } from './api';
+import { googleLoginBody } from './googleLogin';
 import { setCloudServer } from './cloudPage';
+import { setUsersServer } from './usersPage';
 import { confirmDialog, modal, section, toast } from './ui';
 
 export function renderServers(root: HTMLElement, rerender: () => void) {
@@ -60,6 +62,14 @@ function openWizard(root: HTMLElement, rerender: () => void) {
   root.append(h('button', { class: 'btn ghost', onclick: rerender }, '← 返回伺服器清單'), wizard(rerender));
 }
 
+function signedInLabel(s: ServerProfile): string {
+  const u = tokens.user(s.id);
+  if (!u) return '管理員未登入';
+  if (u.breakGlass) return '已用備用密碼登入（擁有者）';
+  if (!u.email) return '管理員已登入';
+  return `已登入：${u.email}（${u.role === 'owner' ? '擁有者' : '成員'}）`;
+}
+
 function serverCard(s: ServerProfile, rerender: () => void) {
   const loggedIn = !!tokens.get(s.id);
   const isDefault = servers.defaultId() === s.id;
@@ -70,7 +80,8 @@ function serverCard(s: ServerProfile, rerender: () => void) {
   guarded.style.display = loggedIn ? '' : 'none';
   guarded.append(
     h('button', { class: 'btn small', onclick: () => editDialog(s).then((ok) => ok && rerender()) }, '編輯'),
-    h('button', { class: 'btn small', onclick: () => passwordDialog(s) }, '更換管理員密碼'),
+    // the password only exists while the server signs in by password, and is the owner's
+    loggedIn && isOwner(s.id) && s.auth !== 'google' ? h('button', { class: 'btn small', onclick: () => passwordDialog(s) }, '更換管理員密碼') : '',
     h('button', {
       class: 'btn small danger',
       onclick: async () => {
@@ -81,7 +92,7 @@ function serverCard(s: ServerProfile, rerender: () => void) {
       },
     }, '移除'),
   );
-  serverInfo(s.url)
+  authMode(s)
     .then(() => {
       status.className = 'chip ok';
       status.textContent = '● 連線正常';
@@ -97,7 +108,7 @@ function serverCard(s: ServerProfile, rerender: () => void) {
     h('div', { class: 'server-main' },
       h('div', null, h('strong', null, s.name), isDefault ? h('span', { class: 'chip ok', style: 'margin-left:8px' }, '預設') : null),
       h('div', { class: 'muted small mono' }, s.url),
-      h('div', { class: 'chips', style: 'margin-top:6px' }, status, h('span', { class: `chip ${loggedIn ? 'ok' : ''}` }, loggedIn ? '管理員已登入' : '管理員未登入')),
+      h('div', { class: 'chips', style: 'margin-top:6px' }, status, h('span', { class: `chip ${loggedIn ? 'ok' : ''}` }, loggedIn ? signedInLabel(s) : '管理員未登入'), s.auth === 'google' ? h('span', { class: 'chip' }, '🔐 Google＋驗證器') : null),
     ),
     h('div', { class: 'server-actions' },
       loggedIn
@@ -106,20 +117,45 @@ function serverCard(s: ServerProfile, rerender: () => void) {
       !isDefault ? h('button', { class: 'btn small', onclick: () => { servers.setDefault(s.id); rerender(); } }, '設為預設') : null,
       // the cloud storages belong to this server: set them up once here, every vault can then use them
       loggedIn ? h('a', { class: 'btn small', href: '#cloud', onclick: () => setCloudServer(s.id) }, '☁️ 雲端空間') : null,
+      loggedIn && isOwner(s.id) ? h('a', { class: 'btn small', href: '#users', onclick: () => setUsersServer(s.id) }, '👥 使用者與登入') : null,
       guarded,
     ),
   );
 }
 
 export async function loginDialog(s: ServerProfile): Promise<boolean> {
+  let mode = s.auth ?? 'password';
+  try {
+    mode = await authMode(s);
+  } catch {
+    /* offline: try what we knew */
+  }
+  if (mode === 'google') {
+    let done = false;
+    const g = googleLoginBody(s, async (password, remember) => {
+      await login(s, password, false, remember);
+      done = true;
+      document.querySelector<HTMLDialogElement>('dialog.modal')?.querySelector<HTMLButtonElement>('.modal-head button')?.click();
+    });
+    await modal('登入', g.body, [
+      { label: '取消', value: '' },
+      { label: 'G 用 Google 登入', value: 'ok', kind: 'primary' },
+    ], async () => {
+      await g.go().catch(() => {});
+      return false; // the tab is on its way to Google
+    });
+    if (done) toast('已用備用密碼登入（擁有者）');
+    return done;
+  }
   const pw = h('input', { type: 'password', class: 'input', placeholder: '管理員密碼', autocomplete: 'current-password' });
+  const remember = h('input', { type: 'checkbox' });
   const err = h('p', { class: 'error' });
-  const v = await modal('管理員登入', [h('p', { class: 'muted' }, `登入「${s.name}」`), pw, err], [
+  const v = await modal('管理員登入', [h('p', { class: 'muted' }, `登入「${s.name}」`), pw, h('label', { class: 'check', style: 'margin-top:8px' }, remember, ' 記住這台裝置 30 天（公用電腦請不要勾）'), err], [
     { label: '取消', value: '' },
     { label: '登入', value: 'ok', kind: 'primary' },
   ], async () => {
     try {
-      await login(s, pw.value);
+      await login(s, pw.value, false, remember.checked);
       return true;
     } catch (e) {
       err.textContent = (e as Error).message;

@@ -85,5 +85,5 @@ export function publicProfile(p: StorageProfile, isDefault: boolean, vaults: num
     if (k.secrets.includes(f)) secretsSet[f] = !!v;
     else if (k.fields.includes(f) || k.shown?.includes(f)) config[f] = v;
   }
-  return { id: p.id, type: p.type, typeLabel: k.label, name: p.name, createdAt: p.createdAt, status: p.status, account: p.state.account ?? '', connectedAt: p.state.connectedAt ?? '', config, secretsSet, isDefault, vaults };
+  return { id: p.id, type: p.type, typeLabel: k.label, name: p.name, createdAt: p.createdAt, status: p.status, account: p.state.account ?? '', connectedAt: p.state.connectedAt ?? '', members: !!p.members, config, secretsSet, isDefault, vaults };
 }
