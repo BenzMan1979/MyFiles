@@ -52,7 +52,8 @@ describe('packer served by the server itself (one address for pages and API)', (
     await p.click('.app-nav a:has-text("使用說明")');
     await p.waitForSelector(`a[href="${site.url}/open.html"]`);
     // removing it on purpose keeps it removed after a reload
-    await p.click('.app-nav a:has-text("伺服器設定")');
+    await p.click('.app-nav a:has-text("設定")');
+    await p.click('.subnav a:has-text("伺服器")');
     await p.click('.server-card button:has-text("移除")');
     await p.click('dialog button:has-text("移除")');
     await p.reload();
@@ -138,7 +139,8 @@ describe('deployer settings baked into the built pages', () => {
     await p.click('summary:has-text("私有 repo")');
     await expect(p.locator('details.more:has(summary:has-text("私有 repo")) code').allTextContents()).resolves.toEqual(expect.arrayContaining(['mine', 'apps/vault', 'npm run build', 'npx wrangler deploy', 'ADMIN_PASSWORD']));
 
-    await p.click('.app-nav a:has-text("建立封存檔")');
+    await p.click('.app-nav a:has-text("封存檔")');
+    await p.click('.subnav a:has-text("建立")');
     await p.setInputFiles('input[type=file][multiple]:not([webkitdirectory])', { name: 'big.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(2 * 1024 * 1024) });
     await p.waitForSelector('.file-row');
     await expect(p.locator('.note.warn').textContent()).resolves.toContain('超過 1MB');

@@ -51,7 +51,8 @@ describe('packer', () => {
   it('sets up a server through the wizard', async () => {
     const p = await gotoPacker('home');
     await shot(p, '01-home');
-    await p.click('.app-nav a:has-text("伺服器設定")');
+    await p.click('.app-nav a:has-text("設定")');
+    await p.click('.subnav a:has-text("伺服器")');
     await shot(p, '02-server-wizard');
     await p.fill('input[placeholder^="https://vault-viewer."]', hub.url);
     await p.click('button:has-text("測試連線")');
