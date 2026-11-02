@@ -74,6 +74,8 @@ function render() {
   const route = ROUTES.find((r) => r.id === id) ?? ROUTES[0];
   clear(nav);
   for (const r of ROUTES) nav.append(h('a', { href: `#${r.id}`, class: r === route ? 'active' : '' }, h('span', null, r.icon), ' ', r.label));
+  // on a phone the menu scrolls sideways: bring the current page's tab into view
+  nav.querySelector<HTMLElement>('a.active')?.scrollIntoView({ block: 'nearest', inline: 'center' });
   clear(main);
   const page = h('div', { class: 'page' });
   main.append(page);
