@@ -2,6 +2,7 @@
 // daily opens (stacked with problems), where and who, and what went wrong.
 import { clear, h } from '../shared/dom';
 import { api, type ServerProfile } from './api';
+import { stackable } from './ui';
 
 export interface Counts { opens: number; resumes: number; issues: number }
 export interface DayStat extends Counts { date: string }
@@ -286,7 +287,7 @@ function issuesBlock(s: Stats): HTMLElement {
     const l = issueLabel(i.kind);
     return h('span', { class: `chip ${l.cls}` }, `${l.icon} ${l.text} ${nf(i.count)}`);
   })));
-  wrap.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table small' },
+  wrap.append(h('div', { class: 'table-wrap' }, stackable(h('table', { class: 'table small' },
     h('thead', null, h('tr', null, ...['時間', '收件人', '狀況', '地區', 'IP'].map((x) => h('th', null, x)))),
     h('tbody', null, ...s.recent.map((r) => {
       const l = issueLabel(r.kind);
@@ -298,7 +299,7 @@ function issuesBlock(s: Stats): HTMLElement {
         h('td', null, h('span', { class: `chip ${l.cls}` }, `${l.icon} ${l.text}`)),
         h('td', null, r.country || '—'),
         h('td', { class: 'mono' }, r.ip || '—'));
-    })))));
+    }))))));
   if (s.period.issues > s.recent.length) wrap.append(h('p', { class: 'muted small' }, `只列出最近 ${s.recent.length} 筆；每份封存檔的完整紀錄請按下方的「紀錄」。`));
   return wrap;
 }

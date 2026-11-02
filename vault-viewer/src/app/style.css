@@ -140,6 +140,8 @@ ul.plain { margin: 4px 0 0; padding-left: 18px; }
 
 /* modal & toast */
 dialog.modal { border: 1px solid var(--border); border-radius: 14px; padding: 0; width: min(560px, calc(100vw - 32px)); background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+/* a dialog that holds a table (the open log) gets room for all its columns */
+dialog.modal:has(.table) { width: min(880px, calc(100vw - 32px)); }
 dialog.modal::backdrop { background: rgba(10, 14, 20, 0.45); }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
 .modal-head h2 { margin: 0; }
@@ -157,6 +159,21 @@ dialog.modal::backdrop { background: rgba(10, 14, 20, 0.45); }
   .recipient-row > :last-child { grid-column: 3; grid-row: 1; }
   .recipient-row > .pw-cell { grid-column: 2 / 4; grid-row: 2; }
   .recipient-row > input:last-of-type { grid-column: 2 / 4; grid-row: 3; }
+}
+
+@media (max-width: 640px) {
+  /* tables that carry data per row become cards: "label  value" lines, no sideways scrolling */
+  .table.stack thead { display: none; }
+  .table.stack, .table.stack tbody { display: block; }
+  .table.stack tr { display: block; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .table.stack tr:last-child { border-bottom: 0; }
+  .table.stack td { display: flex; justify-content: space-between; align-items: center; gap: 14px; border: 0; padding: 3px 2px; white-space: normal; text-align: right; overflow-wrap: anywhere; }
+  .table.stack td::before { content: attr(data-label); flex: none; color: var(--muted); font-weight: 600; text-align: left; }
+  .table.stack td[data-label=""]::before { display: none; }
+  .table.stack td.actions { display: block; padding-top: 6px; text-align: left; }
+  .table.stack td.actions > div { display: flex; flex-wrap: wrap; justify-content: flex-start; }
+  /* long number tables (daily stats) stay tables, but their headings may wrap */
+  .table:not(.stack) th { white-space: normal; vertical-align: bottom; }
 }
 
 @media (max-width: 760px) {

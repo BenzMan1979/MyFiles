@@ -5,7 +5,7 @@ import { clear, formatDateTime, h } from '../shared/dom';
 import { api, listClouds, servers, tokens, type AuthView, type ServerProfile, type UserInfo } from './api';
 import { recoveryDialog, startGoogleLogin } from './googleLogin';
 import { loginDialog } from './serverPage';
-import { confirmDialog, copyButton, field, modal, section, toast } from './ui';
+import { confirmDialog, copyButton, field, modal, section, stackable, toast } from './ui';
 
 let selectedServer = '';
 
@@ -261,10 +261,10 @@ function people(server: ServerProfile, v: AuthView, rerender: () => void) {
   return section(`使用者（${v.users.length}）`,
     v.mode !== 'google' ? h('p', { class: 'note' }, '目前用管理員密碼登入，這份名單暫時沒有作用。') : null,
     h('div', { class: 'table-wrap' },
-      h('table', { class: 'table' },
+      stackable(h('table', { class: 'table' },
         h('thead', null, h('tr', null, ...['帳號', '身分', '狀態', '驗證器', '最後登入', ''].map((t) => h('th', null, t)))),
         h('tbody', null, ...rows),
-      ),
+      )),
     ),
     h('button', { class: 'btn', onclick: add }, '＋ 新增使用者'),
   );

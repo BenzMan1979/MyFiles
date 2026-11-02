@@ -3,7 +3,7 @@ import { api, cloudLink, isOwner, servers, tokens, type RemoteLog, type RemoteVa
 import { removeVault } from './createPage';
 import { loginDialog } from './serverPage';
 import { statsPanel } from './statsView';
-import { confirmDialog, copyButton, fromLocalInput, modal, section, toast, toLocalInput } from './ui';
+import { confirmDialog, copyButton, fromLocalInput, modal, section, stackable, toast, toLocalInput } from './ui';
 
 let selectedServer = '';
 /** owners: show only the vaults made by this person ('' = everyone) */
@@ -146,10 +146,10 @@ function batchCard(server: ServerProfile, title: string, vaults: RemoteVault[], 
   return section(`${title || '（未命名）'}`,
     h('p', { class: 'muted small' }, `建立於 ${formatDateTime(created)} · ${vaults.length} 位收件人${showCreator ? ` · 建立者：${creatorLabel(vaults[0])}` : ''}`),
     h('div', { class: 'table-wrap' },
-      h('table', { class: 'table' },
+      stackable(h('table', { class: 'table' },
         h('thead', null, h('tr', null, ...['收件人', '狀態', '已開啟', '到期', '最後開啟', ''].map((t) => h('th', null, t)))),
         h('tbody', null, ...rows),
-      ),
+      )),
     ),
     vaults.length > 1
       ? h('div', { class: 'row-buttons' },
@@ -211,7 +211,7 @@ async function showLogs(server: ServerProfile, v: RemoteVault) {
     clear(box);
     if (!logs.length) box.append(h('p', { class: 'muted' }, '還沒有任何紀錄'));
     else
-      box.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table small' },
+      box.append(h('div', { class: 'table-wrap' }, stackable(h('table', { class: 'table small' },
         h('thead', null, h('tr', null, ...['時間', '事件', '編號', '地區', 'IP', '瀏覽器'].map((t) => h('th', null, t)))),
         h('tbody', null, ...logs.map((l) => h('tr', null,
           h('td', null, formatDateTime(l.t)),
@@ -221,7 +221,7 @@ async function showLogs(server: ServerProfile, v: RemoteVault) {
           h('td', { class: 'mono' }, l.ip || '—'),
           h('td', null, browserOf(l.ua)),
         ))),
-      )));
+      ))));
   } catch (e) {
     clear(box);
     box.append(h('p', { class: 'error' }, (e as Error).message));
